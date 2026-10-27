@@ -34,7 +34,9 @@ from build_face import (HERE, ROOT, K_SKIN, K_NECK, K_IRIS, K_CONTOUR, K_NODE, K
 
 # the solids, in the canonical model's centimetres (x right, y up, z towards the viewer)
 CRANIUM = dict(c=(0.0, 3.0, -4.25), r=(7.9, 10.6, 9.75), n=2.2)
-JAW = dict(c=(0.0, -4.6, -3.0), r=(7.4, 5.2, 6.4), n=2.6)           # boxy: a square jaw
+# boxy, for the square jaw, and fitted just inside the face's jaw edge seen from the front
+# (a solid that reaches past it shows as a second jawline)
+JAW = dict(c=(0.0, -4.2, -3.0), r=(7.06, 5.3, 6.4), n=2.6)
 EARS = [dict(c=(s * 7.75, 0.3, -3.7), r=(0.95, 3.0, 1.9), n=2.0) for s in (-1, 1)]
 NECK = dict(cx=0.0, cz=-3.6, rx=5.3, rz=5.7, y0=-19.0, y1=0.0)
 
@@ -81,17 +83,20 @@ def masculine(v, fn):
     marked angle and a broader, flatter chin, cheekbones that stand out with hollows
     under them, a slight bump on the bridge of the nose and thinner lips.
 
-    Landmarks are given a displacement in cm (the left side; the right is mirrored)
-    and landmarks that must stay put are anchored; a Gaussian radial basis function
+    Landmarks are given a displacement in cm, x counted outwards from the middle
+    (mirrored to the other side), and landmarks that must stay put are anchored; a Gaussian radial basis function
     through all of them moves the rest of the mesh smoothly. The lips are then
     pressed together towards the line of the mouth."""
     mirror = lambda i: int(np.argmin(((v - v[i] * [-1, 1, 1]) ** 2).sum(1)))
     ctrl = {}
 
-    def move(i, d):
-        ctrl[i] = np.array(d, float)
+    def move(i, d, outwards=True):
+        d = np.array(d, float)
+        if outwards and v[i, 0] < 0:                                   # x counts outwards on either side
+            d = d * [-1, 1, 1]
+        ctrl[i] = d
         if abs(v[i, 0]) > 0.05:
-            ctrl[mirror(i)] = np.array(d, float) * [-1, 1, 1]
+            ctrl[mirror(i)] = d * [-1, 1, 1]
 
     # the jaw: the angle out and down, the bottom of the face flattened into a broad chin
     for i, d in [(132, (0.15, 0, 0)), (58, (0.5, -0.2, 0)), (172, (1.0, -0.5, 0)), (136, (0.95, -0.7, 0.05)),
@@ -102,7 +107,7 @@ def masculine(v, fn):
     for i, d in [(116, (0.3, 0.05, 0.3)), (123, (0.35, 0.0, 0.3)), (117, (0.15, 0.05, 0.25))]:
         move(i, d)
     for i, depth in [(187, 0.45), (207, 0.3), (192, 0.35), (213, 0.3), (147, 0.2), (214, 0.15)]:
-        move(i, -depth * fn[i])
+        move(i, -depth * fn[i], outwards=False)                       # into the face, along its normal
     # a bump on the bridge of the nose, a third of the way down, and a small dip after it
     for i, dz in [(6, 0.04), (197, 0.2), (195, 0.25), (5, -0.03)]:
         move(i, (0, 0, dz))
@@ -341,8 +346,8 @@ def sculpted_hair(path, rng):
 
     # dots: scattered loosely along every flow line (irregular steps, pushed a little
     # to either side, a tone per lock), and a light scatter over the surface in between
-    s_dots, s_n, s_tone, s_lock = [], [], [], []
-    for li, (pts, nrm) in enumerate(zip(lines, normals)):
+    s_dots, s_n, s_tone = [], [], []
+    for pts, nrm in zip(lines, normals):
         sl = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))])
         at = np.cumsum(rng.uniform(0.1, 0.32, int(sl[-1] / 0.1) + 2))
         at = at[at <= sl[-1]]
@@ -354,17 +359,15 @@ def sculpted_hair(path, rng):
         s_dots.append(p + side * rng.normal(0, 0.07, (len(at), 1)))
         s_n.append(n)
         s_tone.append(np.clip(rng.uniform(0.32, 0.6) + rng.normal(0, 0.06, len(at)), 0, 1))
-        s_lock.append(np.full(len(at), li))
     k = poisson_disk(sp, 0.24, 22)
     dots = np.concatenate(s_dots + [sp[k]])
     dots_n = np.concatenate(s_n + [sn[k]])
     dots_n /= np.linalg.norm(dots_n, axis=1, keepdims=True) + 1e-9
     tone = np.concatenate(s_tone + [rng.uniform(0.2, 0.36, len(k))])
-    lock = np.concatenate(s_lock + [np.full(len(k), -1)])             # the flow line of each dot, -1 between them
 
     # a coarse copy of the hair as an occluder
     ov, of = fast_simplification.simplify(h.astype(np.float32), f.astype(np.int32), target_reduction=1 - 9000 / len(f))
-    return lines, normals, hair_t, dots, dots_n, tone, lock, ov.astype(float), of.astype(np.int64)
+    return lines, normals, hair_t, dots, dots_n, tone, ov.astype(float), of.astype(np.int64)
 
 
 def main():
@@ -641,30 +644,30 @@ def main():
         hair_v, hair_n, hair_t = [], [], []
         hair_dot, hair_dot_n, hair_dot_tone = np.zeros((0, 3)), np.zeros((0, 3)), np.zeros(0)
 
-    # the hair ends at the ears: below them it only hung down beside the jaw and
-    # crossed it. Each lock ends at its own height, so the ends stay ragged.
-    HAIR_END = -1.0
-
-    def trim_locks(dots, lock, rng):
-        end = HAIR_END + rng.uniform(-1.5, 0.5, lock.max() + 2)
-        limit = np.where(lock >= 0, end[lock], HAIR_END + rng.uniform(-1.5, 0.5, len(lock)))
-        gone = dots[:, 1] < limit
-        for li in np.unique(lock[gone & (lock >= 0)]):
-            idx = np.where(lock == li)[0]                             # in order along the lock, downwards
-            gone[idx[np.argmax(gone[idx]):]] = True
-        return ~gone
+    def clear_of_head(p, clearance=0.35):
+        axis = np.stack([np.zeros(len(p)), p[:, 1], np.full(len(p), -3.6)], 1)
+        d = p - axis
+        d[:, 1] = 0
+        dist = np.linalg.norm(d, axis=1) + 1e-9
+        d /= dist[:, None]
+        surf, _ = surface(axis, d)
+        need = np.maximum(np.linalg.norm(surf - axis, axis=1) + clearance - dist, 0)
+        tree = cKDTree(p)
+        spread = np.array([need[nb].max() if len(nb) else 0 for nb in tree.query_ball_point(p, 1.0)])
+        push = np.maximum(need, 0.5 * spread)
+        print('hair pushed clear of the head: %d of %d points, at most %.2f cm' % ((push > 0.01).sum(), len(p), push.max()))
+        return p + d * push[:, None]
 
     hair_occ_v, hair_occ_f = np.zeros((0, 3)), np.zeros((0, 3), np.int64)
     if not args.procedural_hair and args.hair_mesh and os.path.exists(args.hair_mesh):
-        (strand_v, _, _, hair_dot, hair_dot_n, hair_dot_tone, hair_lock,
+        (strand_v, _, _, hair_dot, hair_dot_n, hair_dot_tone,
          hair_occ_v, hair_occ_f) = sculpted_hair(args.hair_mesh, np.random.default_rng(5))
         hair_v = []                                                  # dots only, no lines
-        keep = trim_locks(hair_dot, hair_lock, np.random.default_rng(6))
-        hair_dot, hair_dot_n, hair_dot_tone = hair_dot[keep], hair_dot_n[keep], hair_dot_tone[keep]
-        hair_extent = [hair_dot]
-        # the occluder ends with the hair, so nothing hides behind hair that is not there
-        hair_occ_f = hair_occ_f[hair_occ_v[hair_occ_f].mean(1)[:, 1] > HAIR_END]
-        print('hair trimmed at the ears: %d of %d dots gone' % ((~keep).sum(), len(keep)))
+        hair_extent = list(strand_v)
+        # the hair was fitted to the cranium; where the wider jaw now reaches into it,
+        # push it out (a lock moves as a whole, so the push is spread over neighbours)
+        hair_dot = clear_of_head(hair_dot)
+        hair_occ_v = clear_of_head(hair_occ_v)
     else:
         hair_extent = list(hair_v)
 
