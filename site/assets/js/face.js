@@ -1,6 +1,6 @@
 /* ============================================================================
-   The face: a wireframe head with sparse dots (tools/face/build_face.py),
-   drawn with WebGL2.
+   The face: a generic wireframe head with sparse dots
+   (tools/face/build_generic.py), drawn with WebGL2.
 
    The opening, all in the shaders:
      0.0 - 3.75 s  the dots start close to the camera, all over the screen, and

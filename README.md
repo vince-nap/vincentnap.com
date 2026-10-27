@@ -4,7 +4,7 @@ Personal site of Vincent Nap, in the same Detroit: Become Human house style as A
 the light menus of the game — white, navy ink, one android-blue accent, thin lines, corner
 brackets, spaced capitals.
 
-On load, dots fly in from in front of the screen and swirl into a 3D model of the face; a scan
+On load, dots fly in from in front of the screen and swirl into a generic 3D head; a scan
 line leaves a wireframe behind and tracking points light up. The head follows the cursor, the
 date and time tick top right, and four tabs open on the left: Curriculum Vitae, Projects,
 Brief History, Contact.
@@ -15,9 +15,9 @@ site/                    everything that is served (Render publishes this folder
   assets/css/site.css    the house style
   assets/js/app.js       the opening, the clock, the tabs
   assets/js/face.js      the face in WebGL2 (no libraries)
-  assets/face/face.bin   the face model (built by tools/face)
+  assets/face/face.bin   the head model (built by tools/face/build_generic.py)
   assets/fonts/          Barlow (OFL) and TeX Gyre Termes (GUST), served from this site
-tools/face/              builds face.bin from three photos (see tools/face/README.md)
+tools/face/              builds face.bin (see tools/face/README.md)
 render.yaml              Render Blueprint: static site, security headers, short links
 ```
 
@@ -89,4 +89,5 @@ Check with `dig vincentnap.com +short` (should say `216.24.57.1`).
 
 ## Rebuilding the face
 
-Only needed when the photos change — see `tools/face/README.md`.
+See `tools/face/README.md`. The site uses the generic head; the photo-based model is kept in
+`tools/face/build_face.py` but not used.

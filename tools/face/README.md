@@ -1,29 +1,24 @@
 # The face model
 
-`build_face.py` turns three phone photos into `site/assets/face/face.bin` (~300 KB): sparse dots,
-bright clusters along the features, a wireframe (face mesh plus a lat-long grid over the head),
-occluder triangles for hidden lines, and eight tracking points with leader lines.
+Two builders write the same file, `site/assets/face/face.bin` (and `face.json`): a wireframe head
+with sparse dots, bright clusters along the features, occluder triangles for hidden lines, and
+eight tracking points with leader lines. `site/assets/js/face.js` draws whichever was built last.
 
-How the head is made — the docstring at the top of `build_face.py` has the details:
+**`build_generic.py` — what the site uses.** A neutral head that is nobody in particular: MediaPipe's
+canonical face model (an average face) with a cranium, jaw, ears and neck made of simple solids around
+it. No photos needed; it builds in a few seconds.
 
-1. MediaPipe finds the 478 face landmarks and segments each photo (hair, skin, clothes).
-2. The front landmarks are turned upright and made symmetric (every point averaged with its
-   mirror twin); the jaw is squared a little and the forehead brought forward to the profile.
-3. The profiles are aligned to the face through its midline, giving the side outline of the head.
-4. The rest of the head is inflated from the silhouettes as two Poisson height fields (front and
-   back) that meet at a vertical tangent.
-5. Dots, contours, wireframe and occluders are sampled and written out.
+**`build_face.py` — kept, not used.** A head reconstructed from three photos (front and both
+profiles) with hair strands; see the docstring at the top of the file. The photos are not in git;
+they go in `tools/face/input/` as `front.jpg`, `left.jpg` and `right.jpg`.
 
 ## Running it
-
-The photos are not in git. Put them in `tools/face/input/` as `front.jpg`, `left.jpg` and
-`right.jpg` (in `left.jpg` the nose points to the left of the frame).
 
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r tools/face/requirements.txt
 sh tools/face/fetch_models.sh
-python tools/face/build_face.py
+python tools/face/build_generic.py
 ```
 
 On a headless Linux box MediaPipe also needs `libegl1` (`apt-get install libegl1`).
