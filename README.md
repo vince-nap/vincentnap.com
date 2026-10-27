@@ -6,8 +6,9 @@ brackets, spaced capitals.
 
 On load, dots fly in from in front of the screen and swirl into a generic 3D head with long,
 wavy hair — all of it dots, no lines; a scan line runs down it. The head follows the cursor, the
-date and time tick top right, and four tabs open on the left: Curriculum Vitae, Projects,
-Brief History, Contact.
+date and time tick top right, and five tabs open on the left: Curriculum Vitae, Projects,
+Brief History, Contact, Skills. Opening or closing a tab blows the head apart into dots that
+gather again at its new place.
 
 ```
 site/                    everything that is served (Render publishes this folder)
@@ -40,8 +41,24 @@ a project is one `<article class="project">`; a history step is one `<li class="
 existing one and change the text. The CV tab's "Download CV (PDF)" button serves the original CV,
 `site/assets/cv/CV_Vincent_Nap.pdf`: replace that file to update it.
 
-Short links work once deployed: `vincentnap.com/cv`, `/projects`, `/history`, `/contact`
+Short links work once deployed: `vincentnap.com/cv`, `/projects`, `/history`, `/contact`, `/skills`
 (also `vincentnap.com/#cv` and so on).
+
+A skill in the Skills tab is one `<details class="vaardigheid">`; each source under it is one
+`<li class="bron">`, and every source should be an entry on the CV.
+
+## The question form
+
+"Ask a question" in the Contact tab sends the question to the inbox through
+[Web3Forms](https://web3forms.com) (free tier, no server needed). To switch it on:
+
+1. Go to web3forms.com, enter the email address that should receive the questions, and open the
+   access key they send there.
+2. Put the key in `site/index.html`, on the form: `<form class="vraag" id="vraag" data-key="…">`.
+   The key is meant to be public — it only names the inbox — so it can sit in the page.
+
+Until a key is set, the form opens the visitor's own mail program with the question filled in.
+The Content-Security-Policy in `render.yaml` allows `https://api.web3forms.com` for this.
 
 ## Going live: GitHub → Render → Versio
 

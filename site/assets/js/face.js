@@ -30,11 +30,12 @@ uniform float uDist;
 uniform vec2 uShift;
 uniform float uScale;
 vec3 place(vec3 m) { return uRot * (m - uPivot) + uPivot; }
-vec4 project(vec3 q) {
+vec4 projectAt(vec3 q, vec2 shift, float scale) {
   vec4 clip = uProj * vec4(q.x, q.y, q.z - uDist, 1.0);
-  clip.xy = clip.xy * uScale + uShift * clip.w;
+  clip.xy = clip.xy * scale + shift * clip.w;
   return clip;
 }
+vec4 project(vec3 q) { return projectAt(q, uShift, uScale); }
 float facingCam(vec3 p, vec3 n) { return dot(n, normalize(vec3(0.0, 0.0, uDist) - p)); }
 `;
 
@@ -53,6 +54,9 @@ uniform float uScan;
 uniform float uFlight;
 uniform float uKeys;
 uniform float uLeader;
+uniform float uBurst;      // seconds since a tab opened or closed, < 0 when settled
+uniform vec2 uShift0;      // where the head was before that
+uniform float uScale0;
 out vec4 vColor;
 flat out int vShape;
 
@@ -93,14 +97,31 @@ void main() {
   float landed = smoothstep(0.82, 1.0, e);
   q += n * 0.004 * sin(uTime * 1.3 + r1 * 6.2832) * landed * float(kind <= 2);
 
-  vec4 clip = project(q);
+  // ---- the burst: opening or closing a tab blows the head apart into dots, which
+  // swirl over to the head's new place and settle there again
+  float lift = 0.0, go = 1.0;
+  if (uBurst >= 0.0 && flies) {
+    float bt = clamp((uBurst - r3 * 0.3) / (1.0 + r4 * 0.45), 0.0, 1.0);
+    lift = smoothstep(0.0, 0.28, bt) * (1.0 - smoothstep(0.28, 1.0, bt));
+    go = smoothstep(0.12, 0.8, bt);
+    vec3 away = normalize(target - vec3(0.0, 0.1, -0.4) + 1e-4);
+    vec3 dir = normalize(vec3(r1, r2, r5) * 2.0 - 1.0 + away * 0.9);
+    q += dir * (0.45 + 1.1 * r4) * lift;
+    float spin = lift * (0.9 + 1.2 * r2);
+    vec2 c = q.xy - vec2(0.0, 0.05);
+    q.xy = vec2(0.0, 0.05) + vec2(cos(spin) * c.x - sin(spin) * c.y, sin(spin) * c.x + cos(spin) * c.y);
+  }
+  float settled = landed * (1.0 - lift);
+  float scale = mix(uScale0, uScale, go);
+
+  vec4 clip = go < 1.0 ? mix(projectAt(q, uShift0, uScale0), project(q), go) : project(q);
   gl_Position = clip;
 
   // ---- look
   vec3 L = normalize(vec3(-0.45, 0.55, 0.75));
   float dif = max(dot(n, L), 0.0);
   float ink = clamp(tone * 0.95 + (1.0 - dif) * 0.22 - 0.05, 0.0, 1.0);
-  float vis = mix(1.0, smoothstep(-0.12, 0.25, facingCam(p, n)), landed);
+  float vis = mix(1.0, smoothstep(-0.12, 0.25, facingCam(p, n)), settled);
   vis *= kind == 1 ? smoothstep(-2.25, -1.75, target.y) : smoothstep(-1.8, -1.2, target.y);
   float band = uScan > -9.0 ? exp(-pow((target.y - uScan) / 0.04, 2.0)) * landed : 0.0;
 
@@ -129,14 +150,14 @@ void main() {
   } else {                               // the rings at the ends of the leader lines
     size = 0.03 * smoothstep(0.6, 1.0, uLeader); alpha = smoothstep(0.6, 1.0, uLeader); col = accent; vShape = 2;
   }
-  col = mix(accent, col, landed);
+  col = mix(accent, col, settled);
   col = mix(col, accent, band * 0.8);
   alpha = alpha * vis;
-  alpha = mix(0.3 + 0.2 * r4, alpha, landed) * smoothstep(0.0, 0.06, t);
+  alpha = mix(0.3 + 0.2 * r4, alpha, settled) * smoothstep(0.0, 0.06, t);
   alpha = min(1.0, alpha + band * 0.45 * vis);
 
-  float px = size * uViewH / (2.0 * uTanHalf * clip.w) * uScale * (1.0 + band * 0.5);
-  px = mix(max(px, 1.5), clamp(px * 1.6, 1.5, 22.0), 1.0 - landed);
+  float px = size * uViewH / (2.0 * uTanHalf * clip.w) * scale * (1.0 + band * 0.5);
+  px = mix(max(px, 1.5), clamp(px * 1.6, 1.5, 22.0), 1.0 - settled);
   gl_PointSize = px;
   vColor = vec4(col, alpha);
 }`;
@@ -225,6 +246,7 @@ void main() { outColor = vec4(0.0); }`;
 const FOV = 28 * Math.PI / 180;
 export const ASSEMBLED_AT = 3.75;              // the last dot has landed
 export const FINISHED_AT = ASSEMBLED_AT + 1.8; // the scan is done
+const BURST_FOR = 1.8;                         // the burst, from blowing apart to settled
 
 function compile(gl, type, src) {
   const s = gl.createShader(type);
@@ -268,7 +290,7 @@ export async function createFace(canvas, { reduced = false } = {}) {
   const bin = await fetch(`/assets/face/face.bin?v=${meta.version || ''}`).then((r) => r.arrayBuffer());
 
   const shared = ['uPosScale', 'uProj', 'uRot', 'uPivot', 'uDist', 'uShift', 'uScale'];
-  const P = program(gl, POINT_VERT, POINT_FRAG, [...shared, 'uTanHalf', 'uAspect', 'uTime', 'uViewH', 'uGaze', 'uScan', 'uFlight', 'uKeys', 'uLeader']);
+  const P = program(gl, POINT_VERT, POINT_FRAG, [...shared, 'uTanHalf', 'uAspect', 'uTime', 'uViewH', 'uGaze', 'uScan', 'uFlight', 'uKeys', 'uLeader', 'uBurst', 'uShift0', 'uScale0']);
   const Ln = program(gl, LINE_VERT, LINE_FRAG, [...shared, 'uRevealY', 'uScan', 'uLeader', 'uHair', 'uTime']);
   const D = program(gl, DEPTH_VERT, DEPTH_FRAG, shared);
   const all = [P, Ln, D];
@@ -323,6 +345,7 @@ export async function createFace(canvas, { reduced = false } = {}) {
     yaw: 0, pitch: 0, tYaw: 0, tPitch: 0,
     shiftX: 0, shiftY: 0, scale: 1, tShiftX: 0, tShiftY: 0, tScale: 1,
     lastMove: -1e9, dist: 9, w: 1, h: 1,
+    burst: null,                                // { t0, shiftX, shiftY, scale }: where the head came from
   };
 
   function resize() {
@@ -358,13 +381,23 @@ export async function createFace(canvas, { reduced = false } = {}) {
     return state.t0 === null ? 0 : now() - state.t0 + state.skipBy;
   }
 
+  /** Where the head is on screen: during a burst, on its way from the old place to the new. */
+  function placement() {
+    if (!state.burst) return state;
+    const b = state.burst;
+    const k = ease((now() - b.t0 - 0.15) / 1.0);
+    return { shiftX: b.shiftX + (state.shiftX - b.shiftX) * k, shiftY: b.shiftY + (state.shiftY - b.shiftY) * k,
+             scale: b.scale + (state.scale - b.scale) * k };
+  }
+
   /** Screen position (CSS px) of a model point with the head facing forward. */
   function project(x, y, z) {
     const zc = z - state.dist;
     const f = 1 / Math.tan(FOV / 2);
     const aspect = state.w / state.h;
-    const nx = (f / aspect) * x / -zc * state.scale + state.shiftX;
-    const ny = f * y / -zc * state.scale + state.shiftY;
+    const at = placement();
+    const nx = (f / aspect) * x / -zc * at.scale + at.shiftX;
+    const ny = f * y / -zc * at.scale + at.shiftY;
     return [(nx + 1) / 2 * state.w, (1 - ny) / 2 * state.h];
   }
 
@@ -408,7 +441,13 @@ export async function createFace(canvas, { reduced = false } = {}) {
     const hair = reduced ? 1 : ease((te - (ASSEMBLED_AT - 0.3)) / 1.6);
     const keys = reduced ? 1 : ease((te - (ASSEMBLED_AT + 0.85)) / 0.45);
     const leader = reduced ? 1 : ease((te - (ASSEMBLED_AT + 1.05)) / 0.7);
-    const depthOn = te > ASSEMBLED_AT - 0.35;
+    // a burst is over once the slowest dot has settled; the hidden-dot pass waits for that
+    let burst = -1;
+    if (state.burst) {
+      burst = tn - state.burst.t0;
+      if (burst > BURST_FOR) { state.burst = null; burst = -1; }
+    }
+    const depthOn = te > ASSEMBLED_AT - 0.35 && burst < 0;
 
     const rot = rotation(state.yaw, state.pitch);
     for (const { p, u } of all) {
@@ -453,6 +492,10 @@ export async function createFace(canvas, { reduced = false } = {}) {
     gl.uniform1f(P.u.uScan, scan);
     gl.uniform1f(P.u.uKeys, keys);
     gl.uniform1f(P.u.uLeader, leader);
+    gl.uniform1f(P.u.uBurst, burst);
+    const from = state.burst || state;
+    gl.uniform2f(P.u.uShift0, from.shiftX, from.shiftY);
+    gl.uniform1f(P.u.uScale0, from.scale);
     gl.bindVertexArray(pointVao);
     gl.drawArrays(gl.POINTS, 0, meta.points.count);
   }
@@ -480,7 +523,14 @@ export async function createFace(canvas, { reduced = false } = {}) {
       state.tYaw = Math.max(-1, Math.min(1, nx)) * 0.55;
       state.tPitch = -Math.max(-1, Math.min(1, ny)) * 0.3;
     },
-    layout(shiftX, shiftY, scale) { state.tShiftX = shiftX; state.tShiftY = shiftY; state.tScale = scale; },
+    /** Moves the head on screen: gliding there, or (burst) blown apart into dots that gather at the new place. */
+    layout(shiftX, shiftY, scale, { burst = false } = {}) {
+      state.tShiftX = shiftX; state.tShiftY = shiftY; state.tScale = scale;
+      if (!burst || reduced || elapsed() < FINISHED_AT || state.frozen !== undefined) return;
+      const at = placement();
+      state.burst = { t0: now(), shiftX: at.shiftX, shiftY: at.shiftY, scale: at.scale };
+      state.shiftX = shiftX; state.shiftY = shiftY; state.scale = scale;
+    },
     /** The head's frame on screen, CSS px. */
     rect() {
       const [x0, y0] = project(-frame.x, frame.top, 0.2);

@@ -16,8 +16,8 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="preload" href="/assets/fonts/barlow-300.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/barlow-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/assets/css/site.css?v=3f96fe71c7">
-<script type="module" src="/assets/js/app.js?v=bd2ec20cb7"></script>
+<link rel="stylesheet" href="/assets/css/site.css?v=4445cd5f17">
+<script type="module" src="/assets/js/app.js?v=f6e814b788"></script>
 </head>
 <body class="intro">
 
@@ -37,9 +37,11 @@
 </div>
 <dl id="readout" aria-label="Summary">
   <div><dt>Subject</dt><dd>Vincent Nap</dd></div>
+  <div><dt>Age</dt><dd>23</dd></div>
   <div><dt>Field</dt><dd>Law &amp; Finance</dd></div>
   <div><dt>Current</dt><dd>Bencis Capital Partners</dd></div>
   <div><dt>Location</dt><dd>Amsterdam, NL</dd></div>
+  <div><dt>Languages</dt><dd>Dutch · English · German</dd></div>
   <div><dt>Status</dt><dd><span class="led"></span>Online</dd></div>
 </dl>
 
@@ -59,6 +61,7 @@
     <li><a href="#projects" data-tab="projects"><span class="tab-label">Projects</span><span class="tab-kort">Projects</span></a></li>
     <li><a href="#history" data-tab="history"><span class="tab-label">Brief History</span><span class="tab-kort">History</span></a></li>
     <li><a href="#contact" data-tab="contact"><span class="tab-label">Contact</span><span class="tab-kort">Contact</span></a></li>
+    <li><a href="#skills" data-tab="skills"><span class="tab-label">Skills</span><span class="tab-kort">Skills</span></a></li>
   </ul>
 </nav>
 
@@ -78,6 +81,17 @@
 
     <h3 class="blok">Experience</h3>
     <ol class="cv-lijst">
+      <li class="cv-item">
+        <div class="cv-jaar">2026 – present</div>
+        <div class="cv-kern">
+          <div class="cv-org"><span>Verhaal</span><span class="cv-plaats">The Netherlands</span></div>
+          <div class="cv-rol">CEO &amp; Founder</div>
+          <ul>
+            <li>Founded Verhaal, a platform that helps consumers recover what companies owe them, from the notice of default to the payment (in development).</li>
+            <li>Building it around a deterministic workflow engine that owns the state, the statutory deadlines and the money; AI drafts the letters and answers the company at fixed points, and a human reviews what leaves.</li>
+          </ul>
+        </div>
+      </li>
       <li class="cv-item">
         <div class="cv-jaar">Sep – Dec 2026</div>
         <div class="cv-kern">
@@ -354,12 +368,123 @@
         <span class="kanaal-coord">52.37° N · 4.90° E</span>
       </div>
     </div>
+
+    <h3 class="blok" id="h-vraag">Ask a question</h3>
+    <!-- data-key: the Web3Forms access key (public by design; it only says which inbox
+         gets the mail). Without it the form opens the visitor's own mail program. -->
+    <form class="vraag" id="vraag" data-key="" aria-labelledby="h-vraag">
+      <div class="veld">
+        <label for="vraag-tekst">Your question</label>
+        <textarea id="vraag-tekst" name="message" rows="4" maxlength="4000" required></textarea>
+      </div>
+      <div class="veld-duo">
+        <div class="veld">
+          <label for="vraag-naam">Name</label>
+          <input id="vraag-naam" name="name" autocomplete="name" maxlength="120">
+        </div>
+        <div class="veld">
+          <label for="vraag-mail">Email — for the answer</label>
+          <input id="vraag-mail" name="email" type="email" autocomplete="email" maxlength="200" required>
+        </div>
+      </div>
+      <input class="honing" type="checkbox" name="botcheck" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="vraag-voet">
+        <button class="knop" type="submit">Send question</button>
+        <span class="vraag-status" role="status" aria-live="polite"></span>
+      </div>
+    </form>
+  </section>
+
+  <!-- ================================================================= SKILLS -->
+  <section class="pane" id="skills" data-title="Skills" aria-labelledby="h-skills" hidden>
+    <header class="pane-kop">
+      <span class="pane-nr">05</span>
+      <h2 id="h-skills">Skills</h2>
+      <p class="pane-sub">And where each one comes from</p>
+    </header>
+    <p class="inleiding">Open a skill to see where it was learned. Every source is an entry on my CV.</p>
+    <ol class="vaardigheden">
+      <li>
+        <details class="vaardigheid">
+          <summary><span class="vh-nr">01</span><span class="vh-naam">AI Automation and Integration</span><span class="vh-telling">3 sources</span><span class="vh-teken" aria-hidden="true"></span></summary>
+          <ul class="bronnen">
+          <li class="bron"><span class="bron-jaar">Sep – Dec 2026</span><span class="bron-kern"><span class="bron-org">Bencis Capital Partners</span><span class="bron-tekst">Supporting the office in the development and integration of AI.</span></span></li>
+          <li class="bron"><span class="bron-jaar">Sep – Dec 2026</span><span class="bron-kern"><span class="bron-org">Bencis Capital Partners · Argus</span><span class="bron-tekst">Building Argus, an application that reviews KYC and CDD dossiers automatically (in development).</span></span></li>
+          <li class="bron"><span class="bron-jaar">2026 – present</span><span class="bron-kern"><span class="bron-org">Verhaal</span><span class="bron-tekst">A workflow engine that takes consumer claims from the notice of default to the payment, with AI drafting the letters at fixed points.</span></span></li>
+          </ul>
+        </details>
+      </li>
+      <li>
+        <details class="vaardigheid">
+          <summary><span class="vh-nr">02</span><span class="vh-naam">AI Engineering</span><span class="vh-telling">2 sources</span><span class="vh-teken" aria-hidden="true"></span></summary>
+          <ul class="bronnen">
+          <li class="bron"><span class="bron-jaar">2026 – present</span><span class="bron-kern"><span class="bron-org">Verhaal</span><span class="bron-tekst">Building the platform: a deterministic workflow engine that owns the state, the statutory deadlines and the money; AI drafts the letters and a human reviews what leaves.</span></span></li>
+          <li class="bron"><span class="bron-jaar">Sep – Dec 2026</span><span class="bron-kern"><span class="bron-org">Bencis Capital Partners · Argus</span><span class="bron-tekst">Building Argus, an application that reviews KYC and CDD dossiers automatically (in development).</span></span></li>
+          </ul>
+        </details>
+      </li>
+      <li>
+        <details class="vaardigheid">
+          <summary><span class="vh-nr">03</span><span class="vh-naam">Legal and Compliance Analysis</span><span class="vh-telling">6 sources</span><span class="vh-teken" aria-hidden="true"></span></summary>
+          <ul class="bronnen">
+          <li class="bron"><span class="bron-jaar">Sep – Dec 2026</span><span class="bron-kern"><span class="bron-org">Bencis Capital Partners</span><span class="bron-tekst">Assisting the Head of Legal on legal and compliance matters.</span></span></li>
+          <li class="bron"><span class="bron-jaar">2025</span><span class="bron-kern"><span class="bron-org">Florent</span><span class="bron-tekst">Helped limit a potential multi-million-euro liability exposure for a leading car manufacturer; analysed insolvency claims of up to €250,000 and supported M&amp;A due diligence on SPAs.</span></span></li>
+          <li class="bron"><span class="bron-jaar">2023</span><span class="bron-kern"><span class="bron-org">Van Till Advocaten</span><span class="bron-tekst">Legal support to lawyers and partners; drafted procedural documents and court filings.</span></span></li>
+          <li class="bron"><span class="bron-jaar">2025 – present</span><span class="bron-kern"><span class="bron-org">University of Amsterdam</span><span class="bron-tekst">LL.M. Law &amp; Finance; master’s thesis on large group structures, asset partitioning and risk allocation.</span></span></li>
+          <li class="bron"><span class="bron-jaar">2024 – 2025</span><span class="bron-kern"><span class="bron-org">Osgoode Hall Law School</span><span class="bron-tekst">Exchange semester: International Finance and Commercial Law, completed with a 7.5 / 10.</span></span></li>
+          <li class="bron"><span class="bron-jaar">2022 – 2025</span><span class="bron-kern"><span class="bron-org">University of Amsterdam</span><span class="bron-tekst">LL.B. Law and the Amsterdam Law Firm excellence programme; 3rd place in the National Moot Court Marathon.</span></span></li>
+          </ul>
+        </details>
+      </li>
+      <li>
+        <details class="vaardigheid">
+          <summary><span class="vh-nr">04</span><span class="vh-naam">Financial Analysis</span><span class="vh-telling">4 sources</span><span class="vh-teken" aria-hidden="true"></span></summary>
+          <ul class="bronnen">
+          <li class="bron"><span class="bron-jaar">Sep – Dec 2026</span><span class="bron-kern"><span class="bron-org">Bencis Capital Partners</span><span class="bron-tekst">Assisting the CFO with reporting and valuation.</span></span></li>
+          <li class="bron"><span class="bron-jaar">2025 – 2026</span><span class="bron-kern"><span class="bron-org">Central Student Council</span><span class="bron-tekst">Treasurer: budgeting and forecasting of the €100,000 student council budget.</span></span></li>
+          <li class="bron"><span class="bron-jaar">2025 – present</span><span class="bron-kern"><span class="bron-org">Homeowners’ Association (VvE)</span><span class="bron-tekst">Managing a €53,000 reserve fund and preparing multi-year budgets.</span></span></li>
+          <li class="bron"><span class="bron-jaar">2025</span><span class="bron-kern"><span class="bron-org">Florent</span><span class="bron-tekst">Analysed insolvency claims of up to €250,000.</span></span></li>
+          </ul>
+        </details>
+      </li>
+      <li>
+        <details class="vaardigheid">
+          <summary><span class="vh-nr">05</span><span class="vh-naam">Financial Modelling</span><span class="vh-telling">4 sources</span><span class="vh-teken" aria-hidden="true"></span></summary>
+          <ul class="bronnen">
+          <li class="bron"><span class="bron-jaar">Certificate</span><span class="bron-kern"><span class="bron-org">Wall Street Prep</span><span class="bron-tekst">Financial &amp; Valuation Modeling Certificate (enrolled).</span></span></li>
+          <li class="bron"><span class="bron-jaar">2026</span><span class="bron-kern"><span class="bron-org">Wharton Online &amp; Wall Street Prep</span><span class="bron-tekst">Private Equity Certificate, June to August 2026.</span></span></li>
+          <li class="bron"><span class="bron-jaar">2025 – 2026</span><span class="bron-kern"><span class="bron-org">Central Student Council</span><span class="bron-tekst">Forecasting of the €100,000 student council budget.</span></span></li>
+          <li class="bron"><span class="bron-jaar">2025 – present</span><span class="bron-kern"><span class="bron-org">Homeowners’ Association (VvE)</span><span class="bron-tekst">Multi-year budgets for the €53,000 reserve fund.</span></span></li>
+          </ul>
+        </details>
+      </li>
+      <li>
+        <details class="vaardigheid">
+          <summary><span class="vh-nr">06</span><span class="vh-naam">Financial Accounting</span><span class="vh-telling">3 sources</span><span class="vh-teken" aria-hidden="true"></span></summary>
+          <ul class="bronnen">
+          <li class="bron"><span class="bron-jaar">Sep – Dec 2026</span><span class="bron-kern"><span class="bron-org">Bencis Capital Partners</span><span class="bron-tekst">Assisting the CFO with reporting.</span></span></li>
+          <li class="bron"><span class="bron-jaar">2025 – 2026</span><span class="bron-kern"><span class="bron-org">Central Student Council</span><span class="bron-tekst">Treasurer, responsible for the €100,000 student council budget.</span></span></li>
+          <li class="bron"><span class="bron-jaar">2025 – present</span><span class="bron-kern"><span class="bron-org">Homeowners’ Association (VvE)</span><span class="bron-tekst">Managing the €53,000 reserve fund of two apartment buildings.</span></span></li>
+          </ul>
+        </details>
+      </li>
+      <li>
+        <details class="vaardigheid">
+          <summary><span class="vh-nr">07</span><span class="vh-naam">Valuation</span><span class="vh-telling">4 sources</span><span class="vh-teken" aria-hidden="true"></span></summary>
+          <ul class="bronnen">
+          <li class="bron"><span class="bron-jaar">Sep – Dec 2026</span><span class="bron-kern"><span class="bron-org">Bencis Capital Partners</span><span class="bron-tekst">Assisting the CFO with valuation.</span></span></li>
+          <li class="bron"><span class="bron-jaar">Certificate</span><span class="bron-kern"><span class="bron-org">Wall Street Prep</span><span class="bron-tekst">Financial &amp; Valuation Modeling Certificate (enrolled).</span></span></li>
+          <li class="bron"><span class="bron-jaar">2026</span><span class="bron-kern"><span class="bron-org">Wharton Online &amp; Wall Street Prep</span><span class="bron-tekst">Private Equity Certificate, June to August 2026.</span></span></li>
+          <li class="bron"><span class="bron-jaar">2023 – 2025</span><span class="bron-kern"><span class="bron-org">Podcast Rechtspraat</span><span class="bron-tekst">Negotiated and closed the sale of the podcast at 8.2× EBITDA.</span></span></li>
+          </ul>
+        </details>
+      </li>
+    </ol>
   </section>
 </main>
 
 <footer id="voet">
   <span>© <span id="jaar">2026</span> Vincent Nap</span>
-  <span class="voet-hint">Move the cursor — the subject follows</span>
 </footer>
 
 </body>

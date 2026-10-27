@@ -11,10 +11,13 @@
    A click or key press during the opening skips to the end. With reduced
    motion everything is simply there.
 
+   Opening a tab blows the head apart into dots that gather again beside the
+   panel; closing it brings them back to the middle (face.layout, burst).
+
    Tabs are hash links (#cv, #projects, #history, #contact), so a link on a
    CV or LinkedIn can open one directly.
    ========================================================================== */
-import { createFace, ASSEMBLED_AT, FINISHED_AT } from './face.js?v=bb3f72187b';
+import { createFace, ASSEMBLED_AT, FINISHED_AT } from './face.js?v=fc424aaf34';
 
 const root = document.documentElement;
 root.classList.remove('no-js');
@@ -80,24 +83,35 @@ function setWatermark(text) {
   setTimeout(() => { watermark.textContent = text; watermark.classList.remove('wissel'); }, 260);
 }
 
-function layoutFace() {
+// burst: the head blows apart into dots and gathers at its new place (a tab opening
+// or closing); otherwise (a resize) it glides there
+let settling = 0;
+function layoutFace(burst = false) {
   if (!face) return;
   const open = body.classList.contains('open');
-  if (!open) { face.layout(0, narrow.matches ? 0.06 : 0, 1); return; }
-  if (narrow.matches) { face.layout(0, 0.35, 0.55); return; }
+  const opts = { burst: burst === true };
+  if (opts.burst) {
+    // the readout stays away until the dots have gathered again
+    body.classList.add('verplaatst');
+    clearTimeout(settling);
+    settling = setTimeout(() => body.classList.remove('verplaatst'), 1500);
+  }
+  if (!open) { face.layout(0, narrow.matches ? 0.06 : 0, 1, opts); return; }
+  if (narrow.matches) { face.layout(0, 0.35, 0.55, opts); return; }
   // the panel takes the stage; the face steps right and waits behind its glass,
   // or, on screens wide enough to leave room next to the panel, beside it
   const rect = panel.getBoundingClientRect();
   const free = window.innerWidth - rect.right;
   if (free > 320) {
     const nx = ((rect.right + free / 2) / window.innerWidth) * 2 - 1;
-    face.layout(nx, -0.04, Math.max(0.42, Math.min(0.62, free / window.innerWidth * 2.1)));
+    face.layout(nx, -0.04, Math.max(0.42, Math.min(0.62, free / window.innerWidth * 2.1)), opts);
   } else {
-    face.layout(0.55, -0.04, 0.62);
+    face.layout(0.55, -0.04, 0.62, opts);
   }
 }
 
 function show(id) {
+  const wasOpen = body.classList.contains('open');
   const pane = id && document.getElementById(id);
   const valid = pane && pane.classList.contains('pane');
   document.querySelectorAll('.pane').forEach((p) => { p.hidden = p !== pane; });
@@ -114,7 +128,8 @@ function show(id) {
     setWatermark(pane.dataset.title);
     document.title = `${pane.dataset.title} — Vincent Nap`;
   }
-  requestAnimationFrame(layoutFace);
+  const changed = wasOpen !== body.classList.contains('open');
+  requestAnimationFrame(() => layoutFace(changed));
 }
 
 function fromHash() { show(decodeURIComponent(location.hash.slice(1))); }
@@ -132,8 +147,8 @@ tabs.forEach((a) => a.addEventListener('click', (e) => {
   // clicking the open tab again closes it
   if (a.getAttribute('aria-current') === 'page') { e.preventDefault(); close(); }
 }));
-narrow.addEventListener('change', layoutFace);
-window.addEventListener('resize', layoutFace);
+narrow.addEventListener('change', () => layoutFace());
+window.addEventListener('resize', () => layoutFace());
 
 /* ---------- contact ---------- */
 function wireContact() {
@@ -152,6 +167,54 @@ function wireContact() {
     }
     setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('gelukt'); }, 1800);
   });
+  wireQuestion(addr);
+}
+
+/* ---------- ask a question: straight to the inbox, through Web3Forms ----------
+   The access key in data-key is public by design (it only names the inbox).
+   Without a key, or when sending fails, the visitor's own mail program takes over. */
+function wireQuestion(addr) {
+  const form = $('#vraag');
+  const status = form.querySelector('.vraag-status');
+  const send = form.querySelector('button[type="submit"]');
+  const say = (text, cls = '') => { status.textContent = text; status.className = `vraag-status ${cls}`; };
+  const mailto = (d) => `mailto:${addr}?subject=${encodeURIComponent('Question via vincentnap.com')}` +
+    `&body=${encodeURIComponent(d.name ? `${d.message}\n\n— ${d.name}` : d.message)}`;
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!form.reportValidity()) return;
+    const d = Object.fromEntries(new FormData(form));
+    if (d.botcheck) return;                                   // the honeypot: only bots tick it
+    if (!form.dataset.key) { location.href = mailto(d); return; }
+    send.disabled = true;
+    say('Sending…');
+    try {
+      const res = await fetch('https://api.web3forms.com/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          access_key: form.dataset.key,
+          subject: `Question via vincentnap.com${d.name ? ` — ${d.name}` : ''}`,
+          from_name: 'vincentnap.com',
+          name: d.name, email: d.email, message: d.message,
+        }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || !out.success) throw new Error(out.message || `HTTP ${res.status}`);
+      form.reset();
+      say('Sent — the answer comes by email', 'goed');
+    } catch (err) {
+      console.warn('question not sent:', err);
+      say('Not sent. ', 'fout');
+      const a = document.createElement('a');
+      a.href = mailto(d);
+      a.textContent = 'Send it by email instead';
+      status.append(a);
+    } finally {
+      send.disabled = false;
+    }
+  });
 }
 
 /* ---------- the frame and readout follow the face ---------- */
@@ -166,10 +229,10 @@ function followFace() {
     lock.style.height = `${r.height + 2 * padY}px`;
     if (narrow.matches) {
       readout.style.left = `${Math.max(16, r.left + r.width / 2 - 110)}px`;
-      readout.style.top = `${Math.min(window.innerHeight - 190, r.top + r.height + 2 * padY + 14)}px`;
+      readout.style.top = `${Math.min(window.innerHeight - 250, r.top + r.height + 2 * padY + 14)}px`;
     } else {
       const left = r.left + r.width + padX + 36;
-      readout.style.left = `${Math.min(left, window.innerWidth - 300)}px`;
+      readout.style.left = `${Math.min(left, window.innerWidth - 340)}px`;
       readout.style.top = `${r.top + r.height * 0.42}px`;
     }
   });

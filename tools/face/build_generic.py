@@ -128,6 +128,108 @@ def masculine(v, fn):
     return out
 
 
+def glasses(eye, top, bottom, face_z, rng, sp=0.055):
+    """The glasses, measured on the photo against the eyes, brows and nose: rounded
+    square rims from just under the brows to the top of the nose wings, 1.5 cm apart
+    over the nose, flat on top and leaning in at the outer bottom; short wings to the
+    hinges with two rivets each; a bridge high on the nose; the arms back over the
+    ears. Drawn as dense dots like the features, mottled for the tortoiseshell.
+
+    eye: (x, y) of the eye on the +x side; face_z(x, y): depth of the face seen from
+    the front (-inf where there is none), so the frame never sinks into the cheeks.
+    Returns points, normals and tones."""
+    inner, outer = eye[0] - 2.4, eye[0] + 3.5
+    cx, cy = (inner + outer) / 2, (top + bottom) / 2
+    a, b = (outer - inner) / 2 - 0.17, (top - bottom) / 2 - 0.17
+
+    def band(line, width, closed):
+        """Dots filling a band of the given width (per point) around a polyline."""
+        nxt = np.roll(line, -1, 0) if closed else np.vstack([line[1:], 2 * line[-1:] - line[-2:-1]])
+        seg = nxt - line
+        ln = np.linalg.norm(seg, axis=1)
+        nrm2 = np.stack([seg[:, 1], -seg[:, 0]], 1) / ln[:, None]
+        m = int((ln * width).sum() / sp ** 2 * 2.5)
+        i = rng.choice(len(line), m, p=ln * width / (ln * width).sum())
+        t, v = rng.random(m), (rng.random(m) - 0.5) * width[i]
+        return line[i] + seg[i] * t[:, None] + nrm2[i] * v[:, None]
+
+    def inside(poly):
+        """Dots filling a polygon."""
+        from matplotlib.path import Path
+        lo, hi = poly.min(0), poly.max(0)
+        q = lo + rng.random((int(np.prod(hi - lo) / sp ** 2 * 2.5), 2)) * (hi - lo)
+        return q[Path(poly).contains_points(q)]
+
+    # one rim, the +x side: a superellipse, squarer on top, the outer side leaning in at the bottom
+    th = np.linspace(0, 2 * np.pi, 720, endpoint=False)
+    c, s_ = np.cos(th), np.sin(th)
+    n = np.where(s_ > 0, 3.6, 2.4)
+    x, y = a * np.sign(c) * np.abs(c) ** (2 / n), b * np.sign(s_) * np.abs(s_) ** (2 / n)
+    x -= 0.22 * np.clip(-y / b, 0, 1) * np.clip(x / a, 0, 1)
+    rim = np.stack([x + cx, y + cy], 1)
+    w = 0.26 + 0.16 * np.clip((rim[:, 1] - bottom) / (top - bottom), 0, 1)   # thicker on top
+    # the nose comes through between the rims: move the inner side of each rim out
+    # until its inner edge clears the side of the nose
+    zf = lambda x, y: 5.45 - 0.043 * np.maximum(np.abs(x) - 0.7, 0) ** 2 + 0.14 * (y - cy)
+    shift = np.zeros(len(rim))
+    near = np.where(rim[:, 0] < cx)[0]
+    for dx in np.arange(0, 1.5, 0.04):
+        xe = rim[near, 0] - w[near] / 2 + dx
+        clear = face_z(xe, rim[near, 1]) + 0.25 <= zf(xe, rim[near, 1])
+        todo = (shift[near] == 0) & ~clear
+        if not todo.any():
+            break
+        shift[near[todo]] = dx + 0.04
+    shift = np.convolve(np.concatenate([shift[-15:], shift, shift[:15]]), np.ones(31) / 31, 'same')[15:-15]
+    rim[:, 0] += np.maximum(shift, 0) * np.clip((cx - rim[:, 0]) / a * 1.5, 0, 1)
+    wing = np.array([(outer - 0.5, top), (outer + 0.55, top + 0.08), (outer + 0.68, top - 0.05),
+                     (outer + 0.62, top - 0.55), (outer - 0.15, top - 0.95)])
+    half = np.vstack([band(rim, w, True), inside(wing)])
+    rivets = np.array([(outer + 0.12, top - 0.27), (outer + 0.34, top - 0.25)])
+    half = half[np.min(np.linalg.norm(half[:, None] - rivets[None], axis=2), 1) > 0.08]
+    bx = np.linspace(-inner - 0.15, inner + 0.15, 40)
+    bridge = band(np.stack([bx, np.full(40, top - 0.68)], 1), np.full(40, 0.5), False)
+    bridge = bridge[bridge[:, 1] > top - 0.93 + 0.12 * (1 - (bridge[:, 0] / inner) ** 2)]   # arched below
+    front = np.vstack([half, half * [-1, 1], bridge])
+
+    # the front wraps back towards the hinges and tilts in at the bottom (zf above)
+    fz = np.maximum(zf(front[:, 0], front[:, 1]), face_z(front[:, 0], front[:, 1]) + 0.3)
+    f3 = np.column_stack([front, fz])
+    gx = -0.086 * np.maximum(np.abs(front[:, 0]) - 0.7, 0) * np.sign(front[:, 0])
+    f_n = np.column_stack([-gx, np.full(len(front), -0.14), np.ones(len(front))])
+    f_n /= np.linalg.norm(f_n, axis=1, keepdims=True)
+
+    # the arms: from the hinges back over the ears, clear of the cranium
+    def head_x(y, z):
+        out = np.zeros(len(y))
+        for sol in [CRANIUM] + EARS[1:]:
+            (_, sy, sz), (rx, ry, rz), sn = sol['c'], sol['r'], sol['n']
+            rem = 1 - np.abs((y - sy) / ry) ** sn - np.abs((z - sz) / rz) ** sn
+            out = np.maximum(out, np.where(rem > 0, sol['c'][0] + rx * np.clip(rem, 0, 1) ** (1 / sn), 0))
+        return out
+    hx, hy = outer + 0.62, top - 0.3
+    hz = zf(hx, hy)
+    zz = np.linspace(hz, -4.3, 160)
+    ay = hy - 0.35 * (hz - zz) / (hz + 4.3)
+    ax = np.maximum(hx + 0.1 * (hz - zz), head_x(ay, zz) + 0.3)
+    arm_line = np.stack([zz, ay], 1)                                  # a band in the (z, y) plane
+    arm = band(arm_line, np.linspace(0.42, 0.3, 160), False)
+    arm_x = np.interp(-arm[:, 0], -zz, ax)
+    a3 = np.column_stack([arm_x, arm[:, 1], arm[:, 0]])
+    arms = np.vstack([a3, a3 * [-1, 1, 1]])
+    arm_n = np.column_stack([np.sign(arms[:, 0]), np.zeros(len(arms)), np.zeros(len(arms))])
+
+    pts = np.vstack([f3, arms])
+    nrm = np.vstack([f_n, arm_n])
+    k = poisson_disk(pts, sp, 31)
+    pts, nrm = pts[k], nrm[k]
+    # tortoiseshell: a few crossing waves, thresholded into darker and lighter patches
+    noise = sum(np.sin(pts[:, :2] @ (rng.normal(0, 1, 2) * 2 * np.pi / rng.uniform(0.5, 1.1)) + rng.uniform(0, 6.3))
+                for _ in range(4)) / 2
+    tone = np.clip(0.66 + 0.2 * np.tanh(2 * noise), 0.4, 0.95)
+    return pts, nrm, tone
+
+
 def sculpted_hair(path, rng):
     """A sculpted hairstyle, fitted onto the cranium and drawn as flow lines and dots.
 
@@ -270,6 +372,8 @@ def main():
     ap.add_argument('--procedural-hair', action='store_true', help='grow the generated hair (not used on the site)')
     ap.add_argument('--hair-mesh', default=os.path.join(HERE, 'input', 'hair_sculpt.npz'),
                     help='sculpted hair from prepare_hair.py (used when the file exists)')
+    ap.add_argument('--glasses', action='store_true', help='add the glasses (not used on the site)')
+    ap.add_argument('--birthmark', action='store_true', help='add the birthmark by the right nostril (not used on the site)')
     args = ap.parse_args()
 
     face_v, face_f = load_obj(os.path.join(args.models, 'canonical_face_model.obj'))
@@ -535,12 +639,30 @@ def main():
         hair_v, hair_n, hair_t = [], [], []
         hair_dot, hair_dot_n, hair_dot_tone = np.zeros((0, 3)), np.zeros((0, 3)), np.zeros(0)
 
+    def clear_of_head(p, clearance=0.35):
+        axis = np.stack([np.zeros(len(p)), p[:, 1], np.full(len(p), -3.6)], 1)
+        d = p - axis
+        d[:, 1] = 0
+        dist = np.linalg.norm(d, axis=1) + 1e-9
+        d /= dist[:, None]
+        surf, _ = surface(axis, d)
+        need = np.maximum(np.linalg.norm(surf - axis, axis=1) + clearance - dist, 0)
+        tree = cKDTree(p)
+        spread = np.array([need[nb].max() if len(nb) else 0 for nb in tree.query_ball_point(p, 1.0)])
+        push = np.maximum(need, 0.5 * spread)
+        print('hair pushed clear of the head: %d of %d points, at most %.2f cm' % ((push > 0.01).sum(), len(p), push.max()))
+        return p + d * push[:, None]
+
     hair_occ_v, hair_occ_f = np.zeros((0, 3)), np.zeros((0, 3), np.int64)
     if not args.procedural_hair and args.hair_mesh and os.path.exists(args.hair_mesh):
         (strand_v, _, _, hair_dot, hair_dot_n, hair_dot_tone,
          hair_occ_v, hair_occ_f) = sculpted_hair(args.hair_mesh, np.random.default_rng(5))
         hair_v = []                                                  # dots only, no lines
         hair_extent = list(strand_v)
+        # the hair was fitted to the cranium; where the wider jaw now reaches into it,
+        # push it out (a lock moves as a whole, so the push is spread over neighbours)
+        hair_dot = clear_of_head(hair_dot)
+        hair_occ_v = clear_of_head(hair_occ_v)
     else:
         hair_extent = list(hair_v)
 
@@ -576,6 +698,34 @@ def main():
     c_pts, c_nrm, c_tone = np.concatenate(c_pts), np.concatenate(c_nrm), np.concatenate(c_tone)
     k = poisson_disk(c_pts, 0.055, 5)
     c_pts, c_nrm, c_tone = c_pts[k], c_nrm[k], c_tone[k]
+
+    def face_z(x, y):
+        """Depth of the face seen straight from the front, -inf where there is none."""
+        x, y = np.atleast_1d(x).astype(float), np.atleast_1d(y).astype(float)
+        t = hit_face(np.stack([x, y, np.full(len(x), 30.0)], 1), np.tile([0.0, 0.0, -1.0], (len(x), 1)))
+        return np.where(t > 0, 30.0 - t, -np.inf)
+
+    # the glasses (--glasses; off on the site)
+    if args.glasses:
+        eye_c = face_v[sorted(eye_l)].mean(0)
+        eye_c = (abs(eye_c[0]), eye_c[1])
+        g_pts, g_nrm, g_tone = glasses(eye_c, eye_c[1] + 1.36, face_v[49, 1] - 0.1, face_z, np.random.default_rng(9))
+        c_pts, c_nrm, c_tone = np.vstack([c_pts, g_pts]), np.vstack([c_nrm, g_nrm]), np.concatenate([c_tone, g_tone])
+        print('glasses', len(g_pts), 'dots')
+
+    # the birthmark (--birthmark; off on the site): at the edge of the right nostril
+    # wing, as in the photo (the subject's right is -x; on screen it is on the left)
+    if args.birthmark:
+        bx, by = face_v[129, 0] - 0.16, face_v[129, 1] - 0.2
+        bc = np.array([bx, by, face_z(bx, by)[0]])
+        bn = fn[np.argmin(((face_v - bc) ** 2).sum(1))]
+        e1 = np.cross(bn, [0.0, 1.0, 0.0]); e1 /= np.linalg.norm(e1)
+        e2 = np.cross(bn, e1)
+        r_ = 0.17 * np.sqrt(np.random.default_rng(12).random(300)); a_ = np.random.default_rng(13).random(300) * 2 * np.pi
+        m_pts = bc + bn * 0.04 + np.outer(r_ * np.cos(a_), e1) + np.outer(r_ * np.sin(a_), e2)
+        m_pts = m_pts[poisson_disk(m_pts, 0.045, 14)]
+        c_pts, c_nrm = np.vstack([c_pts, m_pts]), np.vstack([c_nrm, np.tile(bn, (len(m_pts), 1))])
+        c_tone = np.concatenate([c_tone, np.full(len(m_pts), 0.95)])
 
     # irises: a ring and a pupil in the middle of each eye opening; they follow the gaze
     i_pts = []

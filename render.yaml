@@ -23,10 +23,13 @@ services:
       - type: redirect
         source: /contact
         destination: /#contact
+      - type: redirect
+        source: /skills
+        destination: /#skills
     headers:
       - path: /*
         name: Content-Security-Policy
-        value: "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none'"
+        value: "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.web3forms.com; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none'"
       - path: /*
         name: X-Content-Type-Options
         value: nosniff

@@ -139,7 +139,7 @@ body.fase-lock .scanlijn { animation: scan 1.1s var(--in-uit) .15s 1 both; }
   pointer-events: none;
 }
 #readout > div {
-  display: grid; grid-template-columns: 92px auto; align-items: baseline; gap: 12px;
+  display: grid; grid-template-columns: 112px auto; align-items: baseline; gap: 12px;
   padding: 7px 0; border-bottom: 1px solid var(--line);
   opacity: 0; transform: translateX(-10px);
 }
@@ -152,7 +152,9 @@ body.fase-readout #readout > div:nth-child(2) { transition-delay: .09s; }
 body.fase-readout #readout > div:nth-child(3) { transition-delay: .18s; }
 body.fase-readout #readout > div:nth-child(4) { transition-delay: .27s; }
 body.fase-readout #readout > div:nth-child(5) { transition-delay: .36s; }
-body.open #readout > div { opacity: 0; transition-delay: 0s; }
+body.fase-readout #readout > div:nth-child(6) { transition-delay: .45s; }
+body.fase-readout #readout > div:nth-child(7) { transition-delay: .54s; }
+body.open #readout > div, body.verplaatst #readout > div { opacity: 0; transition-delay: 0s; }
 
 /* The LED ring at the temple: blue means all is well. */
 .led {
@@ -193,6 +195,7 @@ body.fase-menu #menu li:nth-child(1) { transition-delay: .12s; }
 body.fase-menu #menu li:nth-child(2) { transition-delay: .2s; }
 body.fase-menu #menu li:nth-child(3) { transition-delay: .28s; }
 body.fase-menu #menu li:nth-child(4) { transition-delay: .36s; }
+body.fase-menu #menu li:nth-child(5) { transition-delay: .44s; }
 #menu li a {
   position: relative; display: flex; align-items: center; gap: 14px;
   margin-left: -1px; padding: 14px 16px 14px 18px; border-left: 2px solid transparent;
@@ -240,7 +243,8 @@ body.fase-menu #menu li:nth-child(4) { transition-delay: .36s; }
   transition: opacity .35s, transform .7s var(--uit), visibility 0s .7s;
   outline: none;
 }
-body.open #paneel { opacity: 1; visibility: visible; transform: none; transition: opacity .35s, transform .7s var(--uit), visibility 0s; }
+/* the panel waits a moment, so the head is seen blowing apart before the glass covers it */
+body.open #paneel { opacity: 1; visibility: visible; transform: none; transition: opacity .35s .18s, transform .7s var(--uit) .18s, visibility 0s; }
 .sluit {
   position: absolute; top: 16px; right: 16px; width: 36px; height: 36px; display: grid; place-items: center;
   border: 1px solid var(--line); border-radius: var(--radius); color: var(--ink-soft);
@@ -395,6 +399,57 @@ body.open #paneel { opacity: 1; visibility: visible; transform: none; transition
 a.kanaal-waarde:hover { color: var(--accent); }
 .kanaal-coord { font: 400 10.5px/1.2 var(--f-kop); letter-spacing: .18em; color: var(--ink-faint); }
 
+/* ---------- skills: one line each, opening onto the CV entries behind it ---------- */
+.vaardigheden { margin-top: 22px; border-top: 1px solid var(--line); }
+.vaardigheid { border-bottom: 1px solid var(--line); }
+.vaardigheid summary {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr) auto 22px; align-items: center; gap: 16px;
+  padding: 17px 10px 17px 4px; cursor: pointer; list-style: none;
+  background: linear-gradient(90deg, var(--accent-soft), transparent) no-repeat left / 0% 100%;
+  transition: background-size .45s var(--uit);
+}
+.vaardigheid summary::-webkit-details-marker { display: none; }
+.vaardigheid summary:hover, .vaardigheid[open] summary { background-size: 100% 100%; }
+.vaardigheid summary:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.vh-nr { font: 400 11px/1 var(--f-kop); letter-spacing: .16em; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.vaardigheid[open] .vh-nr { color: var(--accent); }
+.vh-naam { font: 500 14px/1.3 var(--f-kop); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-sterk); }
+.vh-telling { font: 400 10.5px/1 var(--f-kop); letter-spacing: .18em; text-transform: uppercase; color: var(--ink-faint); white-space: nowrap; }
+.vh-teken { position: relative; width: 12px; height: 12px; justify-self: end; }
+.vh-teken::before, .vh-teken::after {
+  content: ""; position: absolute; left: 0; top: 50%; width: 12px; height: 1px; background: var(--accent);
+  transition: transform .35s var(--uit);
+}
+.vh-teken::after { transform: rotate(90deg); }
+.vaardigheid[open] .vh-teken::after { transform: rotate(0deg); }
+.bronnen { display: grid; padding: 2px 0 14px 64px; }
+.vaardigheid[open] .bronnen { animation: fadeUp .5s var(--uit) both; }
+.bron { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 18px; padding: 10px 0; border-top: 1px dashed var(--line); }
+.bron:first-child { border-top: 0; }
+.bron-jaar { padding-top: 2px; font: 500 10.5px/1.4 var(--f-kop); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+.bron-org { display: block; font: 500 12px/1.3 var(--f-kop); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-sterk); }
+.bron-tekst { display: block; margin-top: 3px; font-size: 15.5px; line-height: 1.55; color: var(--ink); max-width: 70ch; }
+
+/* ---------- ask a question ---------- */
+.vraag { display: grid; gap: 14px; max-width: 760px; }
+.veld { display: grid; gap: 7px; }
+.veld-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px; }
+.veld label { font: 500 10.5px/1.2 var(--f-kop); letter-spacing: .24em; text-transform: uppercase; color: var(--ink-faint); }
+.veld input, .veld textarea {
+  width: 100%; padding: 11px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius);
+  font: 400 16px/1.5 var(--f-tekst); color: var(--ink-sterk); background: rgba(255, 255, 255, .94);
+  transition: border-color .25s, box-shadow .3s;
+}
+.veld textarea { resize: vertical; min-height: 110px; }
+.veld input:focus, .veld textarea:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 20px -8px var(--accent-glow); }
+.honing { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+.vraag-voet { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.vraag-status { font: 400 11px/1.4 var(--f-kop); letter-spacing: .18em; text-transform: uppercase; color: var(--ink-faint); }
+.vraag-status.goed { color: var(--accent); }
+.vraag-status.fout { color: var(--rood); }
+.vraag-status a { color: inherit; }
+.vraag button[disabled] { opacity: .55; pointer-events: none; }
+
 /* ---------- footer ---------- */
 #voet {
   position: fixed; z-index: 4; left: var(--rand); right: var(--rand); bottom: 18px;
@@ -403,15 +458,13 @@ a.kanaal-waarde:hover { color: var(--accent); }
   opacity: 0; transition: opacity 1s .4s;
 }
 body.fase-menu #voet { opacity: 1; }
-.voet-hint::before { content: "// "; color: var(--accent); }
-body.open .voet-hint { opacity: 0; transition: opacity .3s; }
 
 /* ---------- without JS or without WebGL ---------- */
 html.no-js #klok, html.no-js #menu li, html.no-js .merk, html.no-js #voet { opacity: 1; transform: none; }
 html.no-js body { overflow: auto; }
 html.no-js #paneel { position: relative; left: auto; top: auto; bottom: auto; width: auto; max-width: 820px; margin: 120px auto 80px; opacity: 1; visibility: visible; transform: none; }
 html.no-js .pane[hidden] { display: block; }
-html.no-js #lock, html.no-js #readout, html.no-js #face, html.no-js .sluit { display: none; }
+html.no-js #lock, html.no-js #readout, html.no-js #face, html.no-js .sluit, html.no-js .vraag, html.no-js #h-vraag { display: none; }
 html.no-js #menu { position: absolute; top: 260px; }
 body.geen-gl #readout { display: none; }
 
@@ -431,7 +484,7 @@ body.geen-gl #readout { display: none; }
   .merk { position: fixed; top: 16px; left: 16px; margin: 0; }
   .merk-naam { font-size: 18px; letter-spacing: .22em; }
   .merk-sub { margin-top: 8px; font-size: 9.5px; }
-  #menu ul { display: grid; grid-template-columns: repeat(4, 1fr); border-left: 0; }
+  #menu ul { display: grid; grid-template-columns: repeat(5, 1fr); border-left: 0; }
   #menu li a { flex-direction: column; gap: 4px; padding: 12px 4px 12px; border-left: 0; border-top: 2px solid transparent; margin: 0; text-align: center; font-size: 10px; letter-spacing: .14em; justify-content: center; }
   #menu li a::after { display: none; }
   #menu li a[aria-current="page"] { border-top-color: var(--accent); }
@@ -443,12 +496,17 @@ body.geen-gl #readout { display: none; }
   .pane-kop h2 { font-size: 21px; letter-spacing: .2em; padding-right: 40px; }
   .cv-item { grid-template-columns: 1fr; gap: 6px; }
   .cv-duo { grid-template-columns: 1fr; }
+  .veld-duo { grid-template-columns: 1fr; }
+  .vaardigheid summary { grid-template-columns: 30px minmax(0, 1fr) 16px; gap: 12px; }
+  .vh-telling { display: none; }
+  .bronnen { padding-left: 0; }
+  .bron { grid-template-columns: 1fr; gap: 4px; }
   .kanaal { grid-template-columns: 1fr auto; gap: 6px 14px; }
   .kanaal-label { grid-column: 1 / -1; }
   .kanaal-waarde { font-size: 18px; }
   .inleiding { font-size: 16.5px; }
   #readout { font-size: 9.5px; }
-  #readout > div { grid-template-columns: 74px auto; padding: 5px 0; }
+  #readout > div { grid-template-columns: 88px auto; padding: 5px 0; }
   #watermerk { font-size: 64px; bottom: 60px; }
 }
 
