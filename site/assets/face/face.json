@@ -2,20 +2,20 @@
  "posScale": 0.0001220703125,
  "points": {
   "offset": 0,
-  "count": 12937,
+  "count": 63048,
   "stride": 12
  },
  "lines": {
-  "offset": 155244,
-  "count": 8736,
+  "offset": 756576,
+  "count": 16,
   "stride": 12
  },
  "tris": {
-  "offset": 260076,
-  "vertices": 1745,
+  "offset": 756768,
+  "vertices": 6187,
   "stride": 8,
-  "indexOffset": 274036,
-  "indices": 9018
+  "indexOffset": 806264,
+  "indices": 36018
  },
  "iris": {
   "radius": 0.057599264903180035
@@ -31,9 +31,9 @@
   "tip": 7
  },
  "frame": {
-  "x": 0.909,
-  "top": 1.253,
+  "x": 1.475,
+  "top": 1.734,
   "chin": -1.155
  },
- "version": "115e4e237b"
+ "version": "802924d64e"
 }

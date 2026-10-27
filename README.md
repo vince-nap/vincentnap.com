@@ -4,8 +4,8 @@ Personal site of Vincent Nap, in the same Detroit: Become Human house style as A
 the light menus of the game — white, navy ink, one android-blue accent, thin lines, corner
 brackets, spaced capitals.
 
-On load, dots fly in from in front of the screen and swirl into a generic 3D head; a scan
-line leaves a wireframe behind and tracking points light up. The head follows the cursor, the
+On load, dots fly in from in front of the screen and swirl into a generic 3D head with long,
+wavy hair — all of it dots, no lines; a scan line runs down it and tracking points light up. The head follows the cursor, the
 date and time tick top right, and four tabs open on the left: Curriculum Vitae, Projects,
 Brief History, Contact.
 
@@ -93,5 +93,6 @@ Check with `dig vincentnap.com +short` (should say `216.24.57.1`).
 
 ## Rebuilding the face
 
-See `tools/face/README.md`. The site uses the generic head; the photo-based model is kept in
-`tools/face/build_face.py` but not used.
+See `tools/face/README.md`. The site uses the generic head with a purchased, sculpted hairstyle
+(the hair model itself is not in git); the photo-based model is kept in `tools/face/build_face.py`
+but not used.

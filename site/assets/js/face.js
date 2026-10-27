@@ -1,21 +1,25 @@
 /* ============================================================================
-   The face: a generic wireframe head with sparse dots
+   The face: a generic head with sculpted hair, all of it dots
    (tools/face/build_generic.py), drawn with WebGL2.
 
    The opening, all in the shaders:
      0.0 - 3.75 s  the dots start close to the camera, all over the screen, and
                    swirl in to their place on the face (ease-out: a fast start
                    and a long run-out, like the rest of the site)
-     3.3 - 4.8 s   a scan line runs down the head and leaves the wireframe
-                   behind it; the hair grows out from the parting
+     3.3 - 4.8 s   a scan line runs down the head, lighting up the dots
+                   it passes
      4.6 - 5.5 s   the tracking points light up and their leader lines grow
    After that the head turns towards the cursor with a soft spring, the eyes
-   lead the head, the nodes twinkle and the scan line returns now and then.
+   lead the head and the scan line returns now and then.
 
-   Hidden lines: the face mesh and the head grid are drawn into the depth
-   buffer first (no colour, pushed a little away from the camera), and the
-   lines and dots are tested against them. Without that the back of the head
-   would show through the face.
+   Hidden dots: the face mesh, the head grid and a coarse copy of the hair are
+   drawn into the depth buffer first (no colour, pushed a little away from the
+   camera), and the dots are tested against them. Without that the back of the
+   head would show through the face.
+
+   The line programs below still draw what face.bin holds as lines: today only
+   the eight leader lines (the generic build has no wireframe and no hair
+   strands, but the photo build and --procedural-hair still write them).
    ========================================================================== */
 
 const COMMON = `
@@ -98,7 +102,7 @@ void main() {
   float dif = max(dot(n, L), 0.0);
   float ink = clamp(tone * 0.95 + (1.0 - dif) * 0.22 - 0.05, 0.0, 1.0);
   float vis = mix(1.0, smoothstep(-0.12, 0.25, facingCam(p, n)), landed);
-  vis *= smoothstep(-1.8, -1.2, target.y);
+  vis *= kind == 1 ? smoothstep(-2.25, -1.75, target.y) : smoothstep(-1.8, -1.2, target.y);
   float band = uScan > -9.0 ? exp(-pow((target.y - uScan) / 0.04, 2.0)) * landed : 0.0;
 
   vec3 light = vec3(0.56, 0.76, 0.95);
@@ -110,8 +114,8 @@ void main() {
   vec3 col;
   vShape = 0;
   if (kind <= 2) {                       // sparse surface dots
-    size = (kind == 1 ? 0.0072 : 0.0064) * (0.7 + 0.9 * ink);
-    alpha = (kind == 1 ? 0.26 : 0.16) + 0.62 * ink;
+    size = 0.0066 * (0.7 + 0.9 * ink);   // skin and hair alike: one stipple, the tone does the rest
+    alpha = 0.18 + 0.62 * ink;
     col = mix(light, deep, ink);
   } else if (kind == 3) {                // irises
     size = 0.0085; alpha = 0.9; col = deep;
@@ -183,15 +187,15 @@ void main() {
   gl_Position = project(p);
 
   float vis = smoothstep(-0.1, 0.3, facingCam(p, n));
-  vis *= smoothstep(-1.8, -1.2, target.y);
-  float base = kind == 0 ? 0.3 : (kind == 1 ? 0.17 : (kind == 2 ? 0.7 : 0.3));
+  vis *= kind == 3 ? smoothstep(-2.25, -1.75, target.y) : smoothstep(-1.8, -1.2, target.y);
+  float base = kind == 0 ? 0.3 : (kind == 1 ? 0.17 : (kind == 2 ? 0.7 : 0.48));
   float shown;
   if (kind == 2) shown = step(0.001, uLeader);
   else if (kind == 3) shown = smoothstep(par - 0.05, par, uHair);   // strands grow from the root
   else shown = smoothstep(uRevealY, uRevealY + 0.07, target.y);
   float band = uScan > -9.0 ? exp(-pow((target.y - uScan) / 0.05, 2.0)) : 0.0;
   float alpha = min(1.0, base + band * 0.5) * vis * shown;
-  float deepMix = kind == 2 ? 0.4 : (kind == 3 ? 0.5 : 0.0);
+  float deepMix = kind == 2 ? 0.4 : (kind == 3 ? 0.6 : 0.0);
   vColor = vec4(mix(vec3(0.114, 0.435, 0.878), vec3(0.03, 0.2, 0.56), deepMix), alpha);
 }`;
 
@@ -221,7 +225,7 @@ void main() { outColor = vec4(0.0); }`;
 
 const FOV = 28 * Math.PI / 180;
 export const ASSEMBLED_AT = 3.75;              // the last dot has landed
-export const FINISHED_AT = ASSEMBLED_AT + 1.8; // wireframe and tracking points are in
+export const FINISHED_AT = ASSEMBLED_AT + 1.8; // scan done, tracking points are in
 
 function compile(gl, type, src) {
   const s = gl.createShader(type);
@@ -391,7 +395,7 @@ export async function createFace(canvas, { reduced = false } = {}) {
     const gx = Math.max(-1, Math.min(1, (state.tYaw - state.yaw) * 2.2 + state.tYaw * 0.6)) * r * 0.32;
     const gy = Math.max(-1, Math.min(1, -(state.tPitch - state.pitch) * 2.2 - state.tPitch * 0.6)) * r * 0.22;
 
-    // the scan line: the first pass leaves the wireframe behind, then once every 9 s
+    // the scan line: once as the face assembles, then once every 9 s
     const sweep = (ph) => frame.top + 0.06 - ph * (frame.top + 1.85);
     const s0 = ASSEMBLED_AT - 0.45;
     let scan = -10;

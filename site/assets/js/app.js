@@ -5,7 +5,7 @@
      0.0   the room is there: glow, grid, rain
      0.0   the dots fly in from in front of the screen and swirl to the face
      0.6   the clock comes up, top right
-     3.3   the brackets lock onto the face; the scan line leaves the wireframe
+     3.3   the brackets lock onto the face; a scan line runs down it
      4.0   name and tabs slide in from the left
      4.6   tracking points light up, leader lines grow
      5.2   the readout types in next to the face
@@ -15,7 +15,7 @@
    Tabs are hash links (#cv, #projects, #history, #contact), so a link on a
    CV or LinkedIn can open one directly.
    ========================================================================== */
-import { createFace, ASSEMBLED_AT, FINISHED_AT } from './face.js?v=27756c5e1c';
+import { createFace, ASSEMBLED_AT, FINISHED_AT } from './face.js?v=cbfdbfa6ad';
 
 const root = document.documentElement;
 root.classList.remove('no-js');

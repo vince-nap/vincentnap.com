@@ -30,7 +30,7 @@ import trimesh
 from mediapipe.tasks.python.vision import FaceLandmarksConnections as FLC
 
 from build_face import (HERE, ROOT, K_SKIN, K_NECK, K_IRIS, K_CONTOUR, K_NODE, K_KEY, K_TIP, K_HAIR,
-                        L_FACE, L_HEAD, L_LEADER, L_HAIR, load_obj, poisson_disk, sample_mesh)
+                        L_LEADER, L_HAIR, load_obj, poisson_disk, sample_mesh)
 
 # the solids, in the canonical model's centimetres (x right, y up, z towards the viewer)
 CRANIUM = dict(c=(0.0, 3.0, -4.25), r=(7.9, 10.6, 9.75), n=2.2)
@@ -76,11 +76,148 @@ def exit_neck(o, d):
     return np.where((t > 0) & (y > NECK['y0']) & (y < NECK['y1']), t, 0.0)
 
 
+def sculpted_hair(path, rng):
+    """A sculpted hairstyle, fitted onto the cranium and drawn as flow lines and dots.
+
+    The hair's inner cavity (where the scalp would be) is found by taking, for every
+    direction from inside the head, the nearest hair vertex; an ellipsoid fitted to
+    those points is matched to the cranium with one uniform scale, so the hairstyle
+    keeps its own proportions. The lines are evenly spaced streamlines running down
+    the outer surface (steepest descent, so they follow the sculpted locks from the
+    parting to the tips). Nothing is drawn as a line: the dots are scattered loosely
+    along each streamline, so the locks show through the same stipple as the skin,
+    with a lighter scatter in between. A coarse copy of the hair hides what lies
+    behind it.
+    """
+    from scipy.optimize import least_squares
+    from scipy.spatial import cKDTree
+    import fast_simplification
+
+    z = np.load(path)
+    v, f = z['V'].astype(float), z['F'].astype(np.int64)
+    # the inner cavity, from roughly the middle of the hair's head
+    c = np.array([0.0, v[:, 1].min() + 0.68 * np.ptp(v[:, 1]), 0.0])
+    c[2] = v[:, 2].min() + 0.53 * np.ptp(v[:, 2])
+    d = v - c
+    r = np.linalg.norm(d, axis=1)
+    u = d / r[:, None]
+    pol = np.degrees(np.arccos(np.clip(u[:, 1], -1, 1)))
+    az = np.degrees(np.arctan2(u[:, 0], u[:, 2]))
+    key = (pol // 6).astype(int) * 100 + ((az + 180) // 8).astype(int)
+    order = np.lexsort((r, key))
+    first = order[np.r_[True, key[order][1:] != key[order][:-1]]]
+    inner = v[first[pol[first] < 95]]
+    rin = np.linalg.norm(inner - c, axis=1)
+    inner = inner[rin < np.median(rin) * 1.25]
+
+    def res(p):
+        q = (inner - [0, p[0], p[1]]) / p[2:]
+        return (np.sqrt((q ** 2).sum(1)) - 1) * p[2:].mean()
+    cy, cz, a, b, cc = least_squares(res, [c[1], c[2], np.median(rin), np.median(rin), np.median(rin)], loss='soft_l1').x
+    s = 0.5 * (CRANIUM['r'][0] / a + CRANIUM['r'][2] / cc) * 1.04       # a few mm of clearance
+    top = CRANIUM['c'][1] + CRANIUM['r'][1] + 0.3
+    h = np.stack([v[:, 0] * s, (v[:, 1] - (cy + b)) * s + top, (v[:, 2] - cz) * s + CRANIUM['c'][2]], 1)
+    print('hair: cavity radii %.1f %.1f %.1f, scale %.4f, bounds %s %s' % (a, b, cc, s, h.min(0).round(1), h.max(0).round(1)))
+
+    hm = trimesh.Trimesh(h, f, process=False)
+    hn = hm.vertex_normals.copy()
+    axis_pt = lambda p: np.stack([np.zeros(len(p)), np.clip(p[:, 1], -20, CRANIUM['c'][1]), np.full(len(p), CRANIUM['c'][2])], 1)
+    if ((h - axis_pt(h)) * hn).sum(1).mean() < 0:
+        hn = -hn
+    # a dense cloud on the surface, for projecting onto it; only the outer side is drawn
+    sp, sn = sample_mesh(h, f, hn, 500000, rng)
+    outer = ((sp - axis_pt(sp)) * sn).sum(1) > 0.05 * np.linalg.norm(sp - axis_pt(sp), axis=1)
+    sp, sn = sp[outer], sn[outer]
+    tree = cKDTree(sp)
+
+    def on_surface(p):
+        dist, i = tree.query(p)
+        n = sn[i]
+        return p - ((p - sp[i]) * n).sum(-1, keepdims=True) * n, n, dist
+
+    # evenly spaced streamlines, from the top down
+    dsep, step = 0.5, 0.28
+    cell = dsep / 2
+    occupied = {}
+
+    def near_other(p, line_id):
+        k = np.floor(p / cell).astype(int)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    for q, lid in occupied.get((k[0] + dx, k[1] + dy, k[2] + dz), ()):
+                        if lid != line_id and ((q - p) ** 2).sum() < (0.5 * dsep) ** 2:
+                            return True
+        return False
+
+    seeds = sp[poisson_disk(sp, 0.7, 21)]
+    seeds = seeds[np.argsort(-seeds[:, 1])]
+    lines, normals = [], []
+    for sid, seed in enumerate(seeds):
+        if near_other(seed, -1):
+            continue
+        p, n, _ = on_surface(seed[None])
+        p, n = p[0], n[0]
+        pts, nrm, last = [p], [n], None
+        for _ in range(170):
+            g = np.array([0.0, -1.0, 0.0])
+            dvec = g - (g @ n) * n
+            if np.linalg.norm(dvec) < 0.3:                               # flat on top: away from the parting
+                dvec = dvec + np.array([0.35 * np.sign(p[0] + 1e-6), 0, 0])
+                dvec -= (dvec @ n) * n
+            dvec /= np.linalg.norm(dvec) + 1e-9
+            if last is not None:
+                dvec = 0.7 * dvec + 0.3 * last
+                dvec /= np.linalg.norm(dvec) + 1e-9
+            q, qn, dist = on_surface((p + dvec * step)[None])
+            q, qn = q[0], qn[0]
+            if dist[0] > 0.35 or (q[1] > p[1] + 0.02) or near_other(q, sid):
+                break
+            pts.append(q); nrm.append(qn); last, p, n = dvec, q, qn
+        if len(pts) >= 6:
+            for q in pts:
+                k = tuple(np.floor(q / cell).astype(int))
+                occupied.setdefault(k, []).append((q, sid))
+            lines.append(np.array(pts)); normals.append(np.array(nrm))
+    hair_t = []
+    for pts in lines:
+        sl = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))])
+        hair_t.append(sl / max(sl[-1], 1e-6))
+    print('hair: %d flow lines, %d points' % (len(lines), sum(len(l) for l in lines)))
+
+    # dots: scattered loosely along every flow line (irregular steps, pushed a little
+    # to either side, a tone per lock), and a light scatter over the surface in between
+    s_dots, s_n, s_tone = [], [], []
+    for pts, nrm in zip(lines, normals):
+        sl = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))])
+        at = np.cumsum(rng.uniform(0.1, 0.32, int(sl[-1] / 0.1) + 2))
+        at = at[at <= sl[-1]]
+        p = np.stack([np.interp(at, sl, pts[:, k]) for k in range(3)], 1)
+        n = np.stack([np.interp(at, sl, nrm[:, k]) for k in range(3)], 1)
+        tan = np.stack([np.interp(at, sl, np.gradient(pts[:, k])) for k in range(3)], 1)
+        side = np.cross(n, tan)
+        side /= np.linalg.norm(side, axis=1, keepdims=True) + 1e-9
+        s_dots.append(p + side * rng.normal(0, 0.07, (len(at), 1)))
+        s_n.append(n)
+        s_tone.append(np.clip(rng.uniform(0.32, 0.6) + rng.normal(0, 0.06, len(at)), 0, 1))
+    k = poisson_disk(sp, 0.24, 22)
+    dots = np.concatenate(s_dots + [sp[k]])
+    dots_n = np.concatenate(s_n + [sn[k]])
+    dots_n /= np.linalg.norm(dots_n, axis=1, keepdims=True) + 1e-9
+    tone = np.concatenate(s_tone + [rng.uniform(0.2, 0.36, len(k))])
+
+    # a coarse copy of the hair as an occluder
+    ov, of = fast_simplification.simplify(h.astype(np.float32), f.astype(np.int32), target_reduction=1 - 9000 / len(f))
+    return lines, normals, hair_t, dots, dots_n, tone, ov.astype(float), of.astype(np.int64)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--models', default=os.path.join(HERE, 'models'))
     ap.add_argument('--out', default=os.path.join(ROOT, 'site', 'assets', 'face'))
     ap.add_argument('--procedural-hair', action='store_true', help='grow the generated hair (not used on the site)')
+    ap.add_argument('--hair-mesh', default=os.path.join(HERE, 'input', 'hair_sculpt.npz'),
+                    help='sculpted hair from prepare_hair.py (used when the file exists)')
     args = ap.parse_args()
 
     face_v, face_f = load_obj(os.path.join(args.models, 'canonical_face_model.obj'))
@@ -150,25 +287,16 @@ def main():
     g_n[((grid - axis_pt) * g_n).sum(-1) < 0] *= -1
     gp, gn = grid.reshape(-1, 3), g_n.reshape(-1, 3)
     gid = np.arange(n_r * n_az).reshape(n_r, n_az)
-    edges = np.concatenate([np.stack([gid, np.roll(gid, -1, 1)], -1).reshape(-1, 2),
-                            np.stack([gid[:-1], gid[1:]], -1).reshape(-1, 2),
-                            np.stack([gid[:-1], np.roll(gid, -1, 1)[1:]], -1).reshape(-1, 2)])
     quads = np.stack([gid[:-1], np.roll(gid, -1, 1)[:-1], np.roll(gid, -1, 1)[1:], gid[1:]], -1).reshape(-1, 4)
     tris = np.concatenate([quads[:, [0, 1, 2]], quads[:, [0, 2, 3]]])
     crown_id = len(gp)
     gp = np.vstack([gp, crown]); gn = np.vstack([gn, [0, 1, 0]]); covered = np.append(covered, False)
-    edges = np.concatenate([edges, np.stack([np.full(n_az, crown_id), gid[0]], 1)])
     tris = np.concatenate([tris, np.stack([np.full(n_az, crown_id), gid[0], np.roll(gid[0], -1)], 1)])
-    head_edges = edges[~covered[edges].any(1)]
     head_tris = tris[~covered[tris].all(1)]
 
-    # the face mesh's own edges, without the ones that close the eyes and the mouth
+    # the eye outlines (for the irises and two of the tracking points)
     eye_l = {c.start for c in FLC.FACE_LANDMARKS_LEFT_EYE} | {c.end for c in FLC.FACE_LANDMARKS_LEFT_EYE}
     eye_r = {c.start for c in FLC.FACE_LANDMARKS_RIGHT_EYE} | {c.end for c in FLC.FACE_LANDMARKS_RIGHT_EYE}
-    lips_inner = {78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308, 191, 80, 81, 82, 13, 312, 311, 310, 415}
-    open_tri = np.array([set(t) <= eye_l or set(t) <= eye_r or set(t) <= lips_inner for t in face_f])
-    ft = face_f[~open_tri]
-    face_edges = np.unique(np.sort(np.concatenate([ft[:, [0, 1]], ft[:, [1, 2]], ft[:, [2, 0]]]), 1), axis=0)
 
     # 2. sparse dots: on the (smoothed) face, and on the head grid outside the face
     sm = fm
@@ -187,16 +315,16 @@ def main():
         return p[k], n[k]
 
     rng = np.random.default_rng(3)
-    p_face, n_face = dots(sm.vertices, sm.faces, sn, 0.2, 1)
-    p_head, n_head = dots(gp, head_tris, gn, 0.27, 2)
+    p_face, n_face = dots(sm.vertices, sm.faces, sn, 0.15, 1)
+    p_head, n_head = dots(gp, head_tris, gn, 0.2, 2)
     keep = n_head[:, 2] > -0.62                                      # never turns towards the viewer
     p_head, n_head = p_head[keep], n_head[keep]
     from scipy.spatial import cKDTree
-    far = cKDTree(p_face).query(p_head)[0] > 0.2
+    far = cKDTree(p_face).query(p_head)[0] > 0.15
     p_head, n_head = p_head[far], n_head[far]
-    face_tone = 0.14 + rng.uniform(0, 0.08, len(p_face))
+    face_tone = 0.18 + rng.uniform(0, 0.1, len(p_face))
     head_kind = np.where(p_head[:, 1] < face_v[152, 1] - 0.6, K_NECK, K_SKIN)
-    head_tone = 0.12 + rng.uniform(0, 0.08, len(p_head))
+    head_tone = 0.16 + rng.uniform(0, 0.08, len(p_head))
 
     # 2b. procedural hair: off by default (python build_generic.py --procedural-hair).
     # A modelled hairstyle is to replace it.
@@ -328,15 +456,21 @@ def main():
         hair_dot, hair_dot_n, hair_dot_tone = np.concatenate(hair_dot), np.concatenate(hair_dot_n), np.concatenate(hair_dot_tone)
         print('hair strands', len(hair_v), 'segments', sum(len(v) - 1 for v in hair_v))
 
-        # the hair hides the head grid and the scattered dots under it
-        grid_hair = in_hair(gp, gn) & ~covered
-        head_edges = head_edges[~grid_hair[head_edges].all(1)]
+        # the hair hides the scattered dots under it
         under = in_hair(p_head, n_head)
         p_head, n_head, head_kind, head_tone = p_head[~under], n_head[~under], head_kind[~under], head_tone[~under]
     else:
         hair_v, hair_n, hair_t = [], [], []
         hair_dot, hair_dot_n, hair_dot_tone = np.zeros((0, 3)), np.zeros((0, 3)), np.zeros(0)
-        grid_hair = np.zeros(len(gp), bool)
+
+    hair_occ_v, hair_occ_f = np.zeros((0, 3)), np.zeros((0, 3), np.int64)
+    if not args.procedural_hair and args.hair_mesh and os.path.exists(args.hair_mesh):
+        (strand_v, _, _, hair_dot, hair_dot_n, hair_dot_tone,
+         hair_occ_v, hair_occ_f) = sculpted_hair(args.hair_mesh, np.random.default_rng(5))
+        hair_v = []                                                  # dots only, no lines
+        hair_extent = list(strand_v)
+    else:
+        hair_extent = list(hair_v)
 
     # 3. bright clusters along the features, like a scan picking them out
     def contour(conns, spacing, tone, jitter, seed, keep=None):
@@ -359,9 +493,9 @@ def main():
         (FLC.FACE_LANDMARKS_LEFT_EYE, 0.05, 1.0, 0.02, None), (FLC.FACE_LANDMARKS_RIGHT_EYE, 0.05, 1.0, 0.02, None),
         (FLC.FACE_LANDMARKS_LEFT_EYEBROW, 0.08, 0.8, 0.06, None), (FLC.FACE_LANDMARKS_RIGHT_EYEBROW, 0.08, 0.8, 0.06, None),
         (FLC.FACE_LANDMARKS_LIPS, 0.055, 0.95, 0.025, None),
-        (FLC.FACE_LANDMARKS_NOSE, 0.065, 0.85, 0.025, lambda a, b: (a[1] < tip_y or b[1] < tip_y) and not (abs(a[0]) < 0.01 and abs(b[0]) < 0.01)),
+        (FLC.FACE_LANDMARKS_NOSE, 0.075, 0.7, 0.035, lambda a, b: (a[1] < tip_y or b[1] < tip_y) and not (abs(a[0]) < 0.01 and abs(b[0]) < 0.01)),
         (FLC.FACE_LANDMARKS_NOSE, 0.1, 0.45, 0.02, lambda a, b: abs(a[0]) < 0.01 and abs(b[0]) < 0.01),
-        (FLC.FACE_LANDMARKS_FACE_OVAL, 0.065, 0.85, 0.025, lambda a, b: a[1] < face_v[132, 1] + 0.5 and b[1] < face_v[132, 1] + 0.5),
+        (FLC.FACE_LANDMARKS_FACE_OVAL, 0.085, 0.6, 0.06, lambda a, b: a[1] < face_v[132, 1] + 0.5 and b[1] < face_v[132, 1] + 0.5),
     ]
     c_pts, c_nrm, c_tone = [], [], []
     for k, (conns, sp, tn, jit, kf) in enumerate(groups):
@@ -385,9 +519,7 @@ def main():
     i_nrm = np.tile([0.0, 0.0, 1.0], (len(i_pts), 1))
     eye_y = face_v[list(eye_l | eye_r), 1].mean()
 
-    # 4. nodes and tracking points with leader lines
-    node_face = np.setdiff1d(np.arange(len(face_v)), list(eye_l | eye_r))
-    hn = np.where(~covered & ~grid_hair)[0]
+    # 4. tracking points with leader lines
     key_ids = [33, 263, 123, 352, 172, 397, 234, 454]
     leaders = []
     for kid in key_ids:
@@ -416,8 +548,6 @@ def main():
         rec(p_face, n_face, K_SKIN, face_tone),
         rec(p_head, n_head, head_kind, head_tone),
         rec(c_pts, c_nrm, K_CONTOUR, c_tone),
-        rec(face_v[node_face], fn[node_face], K_NODE, 0.55),
-        rec(gp[hn], gn[hn], K_NODE, 0.35),
         rec(face_v[key_ids], fn[key_ids], K_KEY, 1.0),
         rec([b for b, _, _ in leaders], [o for _, o, _ in leaders], K_TIP, [l for _, _, l in leaders]),
         rec(i_pts, i_nrm, K_IRIS, 0.9),
@@ -434,8 +564,6 @@ def main():
 
     lb = np.array([b for b, _, _ in leaders]); lo_ = np.array([o for _, o, _ in leaders])
     lines = np.concatenate([
-        line_rec(face_v[face_edges[:, 0]], face_v[face_edges[:, 1]], fn[face_edges[:, 0]], fn[face_edges[:, 1]], L_FACE, 0, 0),
-        line_rec(gp[head_edges[:, 0]], gp[head_edges[:, 1]], gn[head_edges[:, 0]], gn[head_edges[:, 1]], L_HEAD, 0, 0),
         line_rec(lb, lb, lo_, lo_, L_LEADER, 0, np.round(np.array([l for _, _, l in leaders]) * 255)),
     ])
     # hair: line strips, each strand's points once; index 0xFFFF starts the next
@@ -448,8 +576,9 @@ def main():
     else:
         hair, hair_i = rec(np.zeros((0, 3)), np.zeros((0, 3)), L_HAIR, np.zeros(0)), np.zeros(0, np.uint16)
 
-    tri_v = np.concatenate([P(face_v), P(gp)])
-    tri_i = np.concatenate([face_f, head_tris + len(face_v)]).astype(np.uint16).ravel()
+    tri_v = np.concatenate([P(face_v), P(gp), P(hair_occ_v)])
+    assert len(tri_v) < 0xFFFF
+    tri_i = np.concatenate([face_f, head_tris + len(face_v), hair_occ_f + len(face_v) + len(gp)]).astype(np.uint16).ravel()
     tv = np.zeros(len(tri_v), dtype=[('p', '<i2', 3), ('pad', '<i2')])
     tv['p'] = np.round(tri_v / q).clip(-32767, 32767)
 
@@ -460,7 +589,7 @@ def main():
     blob += b'\0' * (o_hair - len(blob)) + hair.tobytes() + hair_i.tobytes()
     with open(os.path.join(args.out, 'face.bin'), 'wb') as fh:
         fh.write(blob)
-    allp = P(np.concatenate([p_face, p_head] + list(hair_v)))
+    allp = P(np.concatenate([p_face, p_head] + hair_extent))
     chin = float(P(face_v[152])[0, 1])
     meta = dict(
         posScale=q,
