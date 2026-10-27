@@ -1,0 +1,8 @@
+# the source photos stay off GitHub; put them in tools/face/input to rebuild the face
+tools/face/input/
+# MediaPipe models: fetched by tools/face/fetch_models.sh
+tools/face/models/
+__pycache__/
+.venv/
+venv/
+.DS_Store
