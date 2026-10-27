@@ -29,6 +29,10 @@ python3 -m http.server 8000 -d site     # then open http://localhost:8000
 
 `http://localhost:8000/?freeze=2.5` holds the opening at 2.5 s, for looking at it frame by frame.
 
+After changing CSS, JS or the face model, run `python3 tools/stamp.py` before committing. It stamps
+each file reference with a fingerprint of the contents (`site.css?v=…`), so browsers fetch the new
+version instead of a cached old one.
+
 ## Editing the content
 
 All text lives in `site/index.html`, one `<section>` per tab. A CV entry is one `<li class="cv-item">`;

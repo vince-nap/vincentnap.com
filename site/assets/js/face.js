@@ -259,10 +259,10 @@ export async function createFace(canvas, { reduced = false } = {}) {
   const gl = canvas.getContext('webgl2', { antialias: true, alpha: true, premultipliedAlpha: true, depth: true });
   if (!gl) throw new Error('webgl2 unavailable');
 
-  const [meta, bin] = await Promise.all([
-    fetch('/assets/face/face.json').then((r) => r.json()),
-    fetch('/assets/face/face.bin').then((r) => r.arrayBuffer()),
-  ]);
+  // face.json is always checked with the server (it is tiny); it names the version of
+  // face.bin, so a new model is never shadowed by a cached old one (tools/stamp.py)
+  const meta = await fetch('/assets/face/face.json', { cache: 'no-cache' }).then((r) => r.json());
+  const bin = await fetch(`/assets/face/face.bin?v=${meta.version || ''}`).then((r) => r.arrayBuffer());
 
   const shared = ['uPosScale', 'uProj', 'uRot', 'uPivot', 'uDist', 'uShift', 'uScale'];
   const P = program(gl, POINT_VERT, POINT_FRAG, [...shared, 'uTanHalf', 'uAspect', 'uTime', 'uViewH', 'uGaze', 'uScan', 'uFlight', 'uKeys', 'uLeader']);

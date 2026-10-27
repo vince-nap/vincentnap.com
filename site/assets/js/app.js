@@ -15,7 +15,7 @@
    Tabs are hash links (#cv, #projects, #history, #contact), so a link on a
    CV or LinkedIn can open one directly.
    ========================================================================== */
-import { createFace, ASSEMBLED_AT, FINISHED_AT } from './face.js';
+import { createFace, ASSEMBLED_AT, FINISHED_AT } from './face.js?v=0b09a6f960';
 
 const root = document.documentElement;
 root.classList.remove('no-js');
