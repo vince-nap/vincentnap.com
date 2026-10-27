@@ -285,9 +285,27 @@ export async function createFace(canvas, { reduced = false } = {}) {
   if (!gl) throw new Error('webgl2 unavailable');
 
   // face.json is always checked with the server (it is tiny); it names the version of
-  // face.bin, so a new model is never shadowed by a cached old one (tools/stamp.py)
-  const meta = await fetch('/assets/face/face.json', { cache: 'no-cache' }).then((r) => r.json());
-  const bin = await fetch(`/assets/face/face.bin?v=${meta.version || ''}`).then((r) => r.arrayBuffer());
+  // face.bin, so a new model is never shadowed by a cached old one (tools/stamp.py).
+  // If either comes back wrong (an error page, or a copy that does not match the
+  // description: a cache caught half-way through a deploy), both are fetched once
+  // more straight from the server.
+  async function load(fresh) {
+    const res = await fetch('/assets/face/face.json', { cache: fresh ? 'reload' : 'no-cache' });
+    if (!res.ok) throw new Error(`face.json: HTTP ${res.status}`);
+    const m = await res.json();
+    const r2 = await fetch(`/assets/face/face.bin?v=${m.version || ''}`, fresh ? { cache: 'reload' } : {});
+    if (!r2.ok) throw new Error(`face.bin: HTTP ${r2.status}`);
+    const b = await r2.arrayBuffer();
+    if (m.bytes && b.byteLength !== m.bytes) throw new Error(`face.bin: ${b.byteLength} bytes, expected ${m.bytes}`);
+    return [m, b];
+  }
+  let meta, bin;
+  try {
+    [meta, bin] = await load(false);
+  } catch (err) {
+    console.warn('face: fetching again from the server:', err.message);
+    [meta, bin] = await load(true);
+  }
 
   const shared = ['uPosScale', 'uProj', 'uRot', 'uPivot', 'uDist', 'uShift', 'uScale'];
   const P = program(gl, POINT_VERT, POINT_FRAG, [...shared, 'uTanHalf', 'uAspect', 'uTime', 'uViewH', 'uGaze', 'uScan', 'uFlight', 'uKeys', 'uLeader', 'uBurst', 'uShift0', 'uScale0']);

@@ -797,6 +797,7 @@ def main():
     chin = float(P(face_v[152])[0, 1])
     meta = dict(
         posScale=q,
+        bytes=len(blob),                                             # face.js checks the download against it
         points=dict(offset=0, count=int(len(pts)), stride=12),
         lines=dict(offset=int(pts.nbytes), count=int(len(lines)), stride=12),
         tris=dict(offset=int(pts.nbytes + lines.nbytes), vertices=int(len(tv)), stride=8,
