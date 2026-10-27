@@ -14,10 +14,13 @@
    Opening a tab blows the head apart into dots that gather again beside the
    panel; closing it brings them back to the middle (face.layout, burst).
 
+   An easter egg: four quick taps or clicks on the face open a code box; the
+   code hands over a beard trimmer (wireTrimmer).
+
    Tabs are hash links (#cv, #projects, #history, #contact), so a link on a
    CV or LinkedIn can open one directly.
    ========================================================================== */
-import { createFace, ASSEMBLED_AT, FINISHED_AT } from './face.js?v=88bf17a449';
+import { createFace, ASSEMBLED_AT, FINISHED_AT } from './face.js?v=afc95fd133';
 
 const root = document.documentElement;
 root.classList.remove('no-js');
@@ -264,6 +267,98 @@ function followFace() {
   });
 }
 
+/* ---------- the easter egg: four quick taps on the face, a code, a beard trimmer ----------
+   With a mouse the trimmer follows the pointer and shaves whatever it passes over;
+   on a touch screen it appears while a finger is down, a little above it so the
+   finger does not hide what it cuts. face.shave does the cutting; while shaving the
+   head turns away from the trimmer, so the side being shaved comes into view. */
+const CODE = 'kabouter';
+let shaving = false;
+
+function wireTrimmer() {
+  const box = $('#code'), form = $('#code-form'), input = $('#code-invoer');
+  const status = form.querySelector('.code-status');
+  const trimmer = $('#tondeuse'), done = $('#scheer-uit');
+  const ui = (el) => el.closest('#menu, #paneel, #klok, #code, .scheer-uit, a, button, input');
+
+  // four quick taps, each within half a second of the last, on the face (not on the menu or a panel)
+  let taps = [];
+  document.addEventListener('pointerdown', (e) => {
+    if (shaving || !box.hidden || body.classList.contains('intro') || body.classList.contains('open') || ui(e.target)) {
+      taps = [];
+      return;
+    }
+    if (taps.length && e.timeStamp - taps[taps.length - 1] > 500) taps = [];
+    taps.push(e.timeStamp);
+    if (taps.length < 4) return;
+    taps = [];
+    status.textContent = '';
+    status.className = 'code-status';
+    input.value = '';
+    box.hidden = false;
+    // focus inside the tap itself, so a phone opens its keyboard; again as the tap
+    // lifts, as a mouse press would otherwise move the focus to what it pressed on
+    input.focus();
+    document.addEventListener('pointerup', () => input.focus(), { once: true });
+  });
+  const closeBox = () => { box.hidden = true; input.blur(); };
+  box.addEventListener('pointerdown', (e) => { if (e.target === box) closeBox(); });
+  box.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeBox(); } });
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (input.value.trim().toLowerCase() === CODE) {
+      status.textContent = 'Access granted';
+      status.className = 'code-status goed';
+      setTimeout(() => { closeBox(); start(); }, 650);
+    } else {
+      status.textContent = 'Access denied';
+      status.className = 'code-status fout';
+      input.value = '';
+      form.classList.remove('schud');
+      void form.offsetWidth;                                  // restart the shake
+      form.classList.add('schud');
+    }
+  });
+
+  // the trimmer
+  let pressed = false, last = null, buzzing = 0, buzzedAt = 0;
+  const show = (on) => { trimmer.classList.toggle('zichtbaar', on); if (!on) last = null; };
+  const start = () => { shaving = true; root.classList.add('scheren'); done.hidden = false; };
+  const stop = () => { shaving = false; root.classList.remove('scheren'); done.hidden = true; pressed = false; show(false); };
+  done.addEventListener('click', stop);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && shaving && box.hidden && !body.classList.contains('open')) stop(); });
+
+  function move(e) {
+    if (!shaving) return;
+    const touch = e.pointerType !== 'mouse';
+    if (body.classList.contains('open') || ui(e.target) || (touch && !pressed)) { show(false); return; }
+    const x = e.clientX, y = e.clientY - (touch ? 64 : 0);
+    trimmer.style.transform = `translate(${x - 22}px, ${y - 2}px) rotate(-25deg)`;
+    show(true);
+    // shave along the way since the last event; a jump (a finger set down elsewhere,
+    // the pointer back in the window) only moves the trimmer
+    const from = last && Math.hypot(x - last[0], y - last[1]) < 160 ? last : [x, y];
+    const cut = face.shave(from[0], from[1], x, y, touch ? 26 : 20);
+    last = [x, y];
+    if (!cut) return;
+    trimmer.classList.add('snijdt');
+    clearTimeout(buzzing);
+    buzzing = setTimeout(() => trimmer.classList.remove('snijdt'), 140);
+    if (touch && navigator.vibrate && e.timeStamp - buzzedAt > 120) { navigator.vibrate(12); buzzedAt = e.timeStamp; }
+  }
+  document.addEventListener('pointermove', move, { passive: true });
+  document.addEventListener('pointerdown', (e) => {
+    if (!shaving || e.pointerType === 'mouse') return;
+    pressed = true;
+    last = null;
+    move(e);
+  });
+  const lift = (e) => { if (e.pointerType !== 'mouse') { pressed = false; show(false); } };
+  document.addEventListener('pointerup', lift);
+  document.addEventListener('pointercancel', lift);
+  document.addEventListener('mouseout', (e) => { if (!e.relatedTarget) show(false); });
+}
+
 /* ---------- start ---------- */
 async function main() {
   startClock();
@@ -284,6 +379,7 @@ async function main() {
   followFace();
   layoutFace();
   face.start();
+  wireTrimmer();
   // debugging: ?freeze=2.5 holds the opening at 2.5 s, &look=0.8,0.2 turns the head
   const params = new URLSearchParams(location.search);
   if (params.has('freeze')) {
@@ -316,7 +412,10 @@ async function main() {
     const [cx, cy] = face.center();
     const nx = (e.clientX - cx) / (window.innerWidth * 0.5);
     const ny = -(e.clientY - cy) / (window.innerHeight * 0.5);
-    face.look(nx, ny);
+    // while shaving the head turns away from the trimmer instead, offering that side
+    // of the head like someone in the barber's chair (above it, it bows)
+    const k = shaving ? -0.75 : 1;
+    face.look(nx * k, ny * k);
   }, { passive: true });
 
   document.addEventListener('visibilitychange', () => {

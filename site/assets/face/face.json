@@ -1,22 +1,31 @@
 {
  "posScale": 0.0001220703125,
- "bytes": 806060,
+ "bytes": 1008872,
  "points": {
   "offset": 0,
-  "count": 57910,
+  "count": 65810,
   "stride": 12
  },
  "lines": {
-  "offset": 694920,
+  "offset": 789720,
   "count": 0,
   "stride": 12
  },
  "tris": {
-  "offset": 694920,
+  "offset": 789720,
   "vertices": 6187,
   "stride": 8,
-  "indexOffset": 744416,
-  "indices": 30822
+  "indexOffset": 839216,
+  "indices": 30822,
+  "hairIndexStart": 8982
+ },
+ "shave": {
+  "hairFirst": 19084,
+  "hairCount": 38826,
+  "stubbleCount": 7900,
+  "locksOffset": 900860,
+  "aboveOffset": 978512,
+  "triAboveOffset": 994312
  },
  "iris": {
   "radius": 0.05714646107219008
@@ -29,12 +38,13 @@
   "contour": 4,
   "node": 5,
   "key": 6,
-  "tip": 7
+  "tip": 7,
+  "stubble": 8
  },
  "frame": {
   "x": 1.462,
   "top": 1.722,
   "chin": -1.159
  },
- "version": "9b8bad1f7f"
+ "version": "36d6a7a62b"
 }

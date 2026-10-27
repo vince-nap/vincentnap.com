@@ -23,6 +23,11 @@ The hair is cut at the height of the chin, each lock ending a little higher or l
 next. Where the jaw reaches into the hair, the hair is pushed outward clear of the head. The jaw solid
 behind the face sits just inside the face's own jaw edge, so only one jawline shows.
 
+For the easter egg (shaving), face.bin also records which lock each hair dot belongs to (the dots of
+a lock run from the root to the tip), a buzzcut of stubble dots on the scalp under the hair (kind 8,
+hidden until shaved), and which hair dot lies above each stubble dot and each of the hair's
+occluder triangles.
+
 Two extras are built in but off on the site: `--glasses` (the frames from the photo, as dots) and
 `--birthmark` (the mark by the right nostril).
 

@@ -16,8 +16,8 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="preload" href="/assets/fonts/barlow-300.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/barlow-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/assets/css/site.css?v=4512425c6f">
-<script type="module" src="/assets/js/app.js?v=a60e3dc2fd"></script>
+<link rel="stylesheet" href="/assets/css/site.css?v=6ec131de18">
+<script type="module" src="/assets/js/app.js?v=17e070b9e4"></script>
 </head>
 <body class="intro">
 
@@ -516,6 +516,34 @@
     </ol>
   </section>
 </main>
+
+<!-- The easter egg (app.js): four quick taps on the face open the code box; the right
+     code hands over a beard trimmer. -->
+<div class="code" id="code" hidden>
+  <form class="code-vak" id="code-form" role="dialog" aria-modal="true" aria-labelledby="code-kop" autocomplete="off">
+    <p class="code-kop" id="code-kop">Input required</p>
+    <input id="code-invoer" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="32" aria-label="Code">
+    <p class="code-status" role="status" aria-live="polite"></p>
+  </form>
+</div>
+<div id="tondeuse" aria-hidden="true">
+  <svg viewBox="0 0 44 124" width="44" height="124">
+    <defs>
+      <linearGradient id="tondeuse-romp" x1="0" x2="1">
+        <stop offset="0" stop-color="#0b1030"/><stop offset=".55" stop-color="#2a3470"/><stop offset="1" stop-color="#0b1030"/>
+      </linearGradient>
+    </defs>
+    <path d="M7 5V1M10 5V1M13 5V1M16 5V1M19 5V1M22 5V1M25 5V1M28 5V1M31 5V1M34 5V1M37 5V1" stroke="#161c40" stroke-width="1.1"/>
+    <rect x="5" y="5" width="34" height="8" fill="#f3f5f9" stroke="#161c40" stroke-width="1.2"/>
+    <rect x="6" y="13" width="32" height="4" fill="#9aa6c4"/>
+    <path d="M6 17h32l-2 10H8z" fill="#161c40"/>
+    <path d="M8 27h28l-3 80a11 11 0 0 1-22 0z" fill="url(#tondeuse-romp)"/>
+    <rect x="20.5" y="38" width="3" height="40" rx="1.5" fill="#1d6fe0"/>
+    <circle cx="22" cy="90" r="5" fill="none" stroke="#8fb4f0" stroke-width="1.4"/>
+    <circle cx="22" cy="104" r="1.5" fill="#4aa3ff"/>
+  </svg>
+</div>
+<button class="knop knop-klein scheer-uit" id="scheer-uit" type="button" hidden>Put the trimmer down</button>
 
 <footer id="voet">
   <span>© <span id="jaar">2026</span> Vincent Nap</span>

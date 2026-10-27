@@ -16,6 +16,13 @@
    camera), and the dots are tested against them. Without that the back of the
    head would show through the face.
 
+   Shaving (the easter egg in app.js): the hair and the buzzcut under it are
+   drawn in a second call with a little state per dot (shaver below). A lock
+   the trimmer touches comes loose from there to its tip and falls as one
+   strand: gravity against the drag of the air, a slow tumble, then it fades.
+   Stray dots left with no lock nearby fall too; where no hair is left, the
+   stubble shows and the hair's part of the depth pass goes.
+
    The line programs and the tracking-point kinds below draw nothing for the
    generic build (no wireframe, no hair strands, no tracking points or leader
    lines); the photo build and --procedural-hair still write them.
@@ -44,7 +51,11 @@ precision highp float;
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNrm;
 layout(location = 2) in vec2 aKT;
+layout(location = 3) in vec4 aFall;    // hair: place in its strand when it came loose (xyz) and when (w; < 0 attached). Stubble: shown since (w)
+layout(location = 4) in vec4 aDrift;   // the strand's velocity when it came loose (xyz) and its tumble (w)
+layout(location = 5) in vec3 aCentre;  // the strand's centre when it came loose
 ${COMMON}
+uniform int uIdBase;       // the first dot of this draw call, so every dot keeps its own random numbers
 uniform float uTanHalf;
 uniform float uAspect;
 uniform float uTime;
@@ -68,7 +79,7 @@ uint hash(uint x) {
 float rnd(uint i, uint k) { return float(hash(i * 8u + k) & 0xffffffu) / 16777216.0; }
 
 void main() {
-  uint id = uint(gl_VertexID);
+  uint id = uint(gl_VertexID + uIdBase);
   float r1 = rnd(id, 0u), r2 = rnd(id, 1u), r3 = rnd(id, 2u), r4 = rnd(id, 3u), r5 = rnd(id, 4u);
   int kind = int(aKT.x + 0.5);
   float tone = aKT.y / 255.0;
@@ -81,7 +92,7 @@ void main() {
   if (kind == 7) n = uRot * vec3(0.0, 0.0, 1.0);
 
   // ---- the flight in (dots and nodes; the tracking points come later)
-  bool flies = kind <= 5;
+  bool flies = kind <= 5 || kind == 8;
   float delay = 0.1 + r3 * 1.15 + 0.45 * smoothstep(0.4, 1.7, length(target.xy));
   float dur = 2.0 + r4 * 0.7;
   float t = flies ? clamp((uTime - delay) / dur, 0.0, 1.0) : 1.0;
@@ -111,6 +122,21 @@ void main() {
     vec2 c = q.xy - vec2(0.0, 0.05);
     q.xy = vec2(0.0, 0.05) + vec2(cos(spin) * c.x - sin(spin) * c.y, sin(spin) * c.x + cos(spin) * c.y);
   }
+  // ---- shaved off: the strand slides off the head and falls with gravity against
+  // the drag of the air (towards a slow terminal speed, like hair; sideways the air
+  // slows it more gently), tumbling slowly, fluttering a little
+  bool falling = kind == 1 && aFall.w >= 0.0;
+  float ft = falling ? max(uTime - aFall.w, 0.0) : 0.0;
+  if (falling) {
+    float tau = 0.3, tauH = 0.9, vt = 3.0;
+    float ex = 1.0 - exp(-ft / tau), eh = 1.0 - exp(-ft / tauH);
+    float a = aDrift.w * tau * ex;
+    vec3 o = aFall.xyz;
+    o.xy = vec2(cos(a) * o.x - sin(a) * o.y, sin(a) * o.x + cos(a) * o.y);
+    q = aCentre + o + vec3(aDrift.x * tauH * eh, (aDrift.y + vt) * tau * ex - vt * ft, aDrift.z * tauH * eh);
+    q.x += sin(ft * 5.0 + r1 * 6.2832) * 0.012 * min(ft, 1.0);
+    lift = 0.0; go = 1.0;
+  }
   float settled = landed * (1.0 - lift);
   float scale = mix(uScale0, uScale, go);
 
@@ -123,6 +149,7 @@ void main() {
   float ink = clamp(tone * 0.95 + (1.0 - dif) * 0.22 - 0.05, 0.0, 1.0);
   float vis = mix(1.0, smoothstep(-0.12, 0.25, facingCam(p, n)), settled);
   vis *= kind == 1 ? smoothstep(-2.25, -1.75, target.y) : smoothstep(-1.8, -1.2, target.y);
+  if (falling) vis = (1.0 - smoothstep(1.4, 2.5, ft)) * smoothstep(-2.7, -2.0, q.y);
   float band = uScan > -9.0 ? exp(-pow((target.y - uScan) / 0.04, 2.0)) * landed : 0.0;
 
   vec3 light = vec3(0.56, 0.76, 0.95);
@@ -147,6 +174,10 @@ void main() {
   } else if (kind == 6) {                // tracking points
     float pop = clamp(uKeys, 0.0, 1.0);
     size = 0.034 * (pop + 0.25 * sin(pop * 3.14159)); alpha = pop; col = deep; vShape = 1;
+  } else if (kind == 8) {                // the buzzcut, once the hair over it is gone
+    size = 0.0046 * (0.8 + 0.5 * tone);
+    alpha = (0.3 + 0.55 * tone) * (aFall.w >= 0.0 ? smoothstep(0.0, 0.4, uTime - aFall.w) : 0.0);
+    col = mix(light, deep, 0.55 + 0.45 * tone);
   } else {                               // the rings at the ends of the leader lines
     size = 0.03 * smoothstep(0.6, 1.0, uLeader); alpha = smoothstep(0.6, 1.0, uLeader); col = accent; vShape = 2;
   }
@@ -158,7 +189,7 @@ void main() {
 
   float px = size * uViewH / (2.0 * uTanHalf * clip.w) * scale * (1.0 + band * 0.5);
   px = mix(max(px, 1.5), clamp(px * 1.6, 1.5, 22.0), 1.0 - settled);
-  gl_PointSize = px;
+  gl_PointSize = falling && ft > 2.6 ? 0.0 : px;
   vColor = vec4(col, alpha);
 }`;
 
@@ -280,6 +311,222 @@ function rotation(yaw, pitch) {
 
 const ease = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
 
+/* ---------- shaving: the CPU side ----------
+   Which dots the trimmer touches, which locks come loose (from there to the tip:
+   the dots of a lock follow each other in face.bin from the root down), which
+   stray dots and which stubble follow, and which triangles of the hair's depth
+   pass go. Stubble and triangles go with the hair dot straight above them
+   (face.bin); stray dots fall when no lock is left near them, found through a
+   coarse grid over the hair, each cell counting the attached lock dots it holds. */
+const PIVOT = [0, -0.15, -0.4];          // as uPivot
+const CELL = 0.12;                        // grid cell, model units (about 1.2 cm)
+const STATE = 11;                         // floats of state per dot: aFall 4, aDrift 4, aCentre 3
+
+function createShaver(gl, bin, meta, triVao) {
+  const sh = meta.shave;
+  const first = sh.hairFirst, nh = sh.hairCount, n = nh + sh.stubbleCount;
+  const raw = new Int16Array(bin, meta.points.offset + first * 12, n * 6);
+  const rawN = new Int8Array(bin, meta.points.offset + first * 12, n * 12);
+  const lock = new Int16Array(bin, sh.locksOffset, nh);
+  const pos = new Float32Array(n * 3), nrm = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    for (let k = 0; k < 3; k++) {
+      pos[i * 3 + k] = raw[i * 6 + k] * meta.posScale;
+      nrm[i * 3 + k] = rawN[i * 12 + 6 + k] / 127;
+    }
+  }
+
+  // the state the shader reads, and the vertex array of this second draw call
+  const dyn = new Float32Array(n * STATE);
+  for (let i = 0; i < n; i++) dyn[i * STATE + 3] = -1;
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, new Uint8Array(bin, meta.points.offset + first * 12, n * 12), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 3, gl.SHORT, false, 12, 0);
+  gl.enableVertexAttribArray(1);
+  gl.vertexAttribPointer(1, 3, gl.BYTE, true, 12, 6);
+  gl.enableVertexAttribArray(2);
+  gl.vertexAttribPointer(2, 2, gl.UNSIGNED_BYTE, false, 12, 9);
+  const dynBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, dynBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, dyn, gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(3);
+  gl.vertexAttribPointer(3, 4, gl.FLOAT, false, STATE * 4, 0);
+  gl.enableVertexAttribArray(4);
+  gl.vertexAttribPointer(4, 4, gl.FLOAT, false, STATE * 4, 16);
+  gl.enableVertexAttribArray(5);
+  gl.vertexAttribPointer(5, 3, gl.FLOAT, false, STATE * 4, 32);
+  gl.bindVertexArray(null);
+
+  // the hair's triangles in the depth pass
+  const idx = new Uint16Array(bin, meta.tris.indexOffset, meta.tris.indices);
+  const base = meta.tris.hairIndexStart;
+  const nt = (idx.length - base) / 3;
+  const triAlive = new Uint8Array(nt).fill(1);
+  const idxOut = new Uint16Array(idx);
+  let triCount = idx.length, trisDirty = false;
+
+  // the grid
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  const grow = (a, i) => { for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], a[i * 3 + k]); hi[k] = Math.max(hi[k], a[i * 3 + k]); } };
+  for (let i = 0; i < nh; i++) grow(pos, i);
+  const dim = [0, 1, 2].map((k) => Math.ceil((hi[k] - lo[k]) / CELL) + 3);
+  const cellAt = (a, i) => {
+    const c = [0, 1, 2].map((k) => Math.floor((a[i * 3 + k] - lo[k]) / CELL) + 1);
+    return (c[0] * dim[1] + c[1]) * dim[2] + c[2];
+  };
+  const cells = dim[0] * dim[1] * dim[2];
+  const cell = new Int32Array(nh);
+  for (let i = 0; i < nh; i++) cell[i] = cellAt(pos, i);
+  const lockCount = new Int32Array(cells);
+  const attached = new Uint8Array(nh).fill(1);
+  for (let i = 0; i < nh; i++) if (lock[i] >= 0) lockCount[cell[i]]++;
+  const near = (count, c) => {
+    let sum = 0;
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+      sum += count[c + (dx * dim[1] + dy) * dim[2] + dz];
+    }
+    return sum;
+  };
+  // lists by key (compact): per cell its stray dots; per hair dot the stubble and the triangles under it
+  function byKey(list, keyOf, keys) {
+    const start = new Int32Array(keys + 1);
+    for (const i of list) start[keyOf(i) + 1]++;
+    for (let c = 0; c < keys; c++) start[c + 1] += start[c];
+    const out = new Int32Array(list.length), fill = start.slice(0, keys);
+    for (const i of list) out[fill[keyOf(i)]++] = i;
+    return { start, out };
+  }
+  const strays = [];
+  for (let i = 0; i < nh; i++) if (lock[i] < 0) strays.push(i);
+  const strayAt = byKey(strays, (i) => cell[i], cells);
+  const above = new Uint16Array(bin, sh.aboveOffset, n - nh);
+  const stubbleOf = byKey([...Array(n - nh).keys()].map((j) => nh + j), (i) => above[i - nh], nh);
+  const triAbove = new Uint16Array(bin, sh.triAboveOffset, nt);
+  const trisOf = byKey([...Array(nt).keys()], (k) => triAbove[k], nh);
+
+  // the locks: each from its first dot; the attached part ends at lockEnd
+  let nl = 0;
+  for (let i = 0; i < nh; i++) nl = Math.max(nl, lock[i] + 1);
+  const lockEnd = new Int32Array(nl);
+  for (let i = 0; i < nh; i++) if (lock[i] >= 0) lockEnd[lock[i]] = i + 1;
+
+  let dirtyLo = n, dirtyHi = 0;
+  const world = new Float32Array(nh * 3);
+  const queueLock = [];
+  const rand = (a, b) => a + Math.random() * (b - a);
+
+  function loose(i, cx, cy, cz, vx, vy, vz, tumble, t) {
+    const o = i * STATE;
+    dyn[o] = world[i * 3] - cx; dyn[o + 1] = world[i * 3 + 1] - cy; dyn[o + 2] = world[i * 3 + 2] - cz; dyn[o + 3] = t;
+    dyn[o + 4] = vx + rand(-0.04, 0.04); dyn[o + 5] = vy + rand(-0.04, 0.04); dyn[o + 6] = vz; dyn[o + 7] = tumble;
+    dyn[o + 8] = cx; dyn[o + 9] = cy; dyn[o + 10] = cz;
+    dirtyLo = Math.min(dirtyLo, i); dirtyHi = Math.max(dirtyHi, i + 1);
+    attached[i] = 0;
+    for (let j = stubbleOf.start[i]; j < stubbleOf.start[i + 1]; j++) {
+      const k = stubbleOf.out[j];
+      if (dyn[k * STATE + 3] < 0) { dyn[k * STATE + 3] = t + 0.15; dirtyHi = Math.max(dirtyHi, k + 1); }
+    }
+    for (let j = trisOf.start[i]; j < trisOf.start[i + 1]; j++) {
+      const k = trisOf.out[j];
+      if (triAlive[k]) { triAlive[k] = 0; trisDirty = true; }
+    }
+    if (lock[i] >= 0 && --lockCount[cell[i]] === 0) queueLock.push(cell[i]);
+  }
+
+  /** Cuts along the trimmer's path (x0,y0)-(x1,y1), radius r, all in CSS px. Returns the dots cut. */
+  function cut(x0, y0, x1, y1, r, v) {
+    const R = v.rot, f = 1 / v.tan, t = v.now;
+    const hit = new Int32Array(nl).fill(-1);
+    const strayHit = [];
+    const sx = x1 - x0, sy = y1 - y0, sl = sx * sx + sy * sy || 1;
+    let count = 0;
+    for (let i = 0; i < nh; i++) {
+      const mx = pos[i * 3] - PIVOT[0], my = pos[i * 3 + 1] - PIVOT[1], mz = pos[i * 3 + 2] - PIVOT[2];
+      const wx = R[0] * mx + R[3] * my + R[6] * mz + PIVOT[0];
+      const wy = R[1] * mx + R[4] * my + R[7] * mz + PIVOT[1];
+      const wz = R[2] * mx + R[5] * my + R[8] * mz + PIVOT[2];
+      world[i * 3] = wx; world[i * 3 + 1] = wy; world[i * 3 + 2] = wz;
+      if (!attached[i]) continue;
+      // only what faces the viewer: the trimmer is on this side of the head
+      const nx = nrm[i * 3], ny = nrm[i * 3 + 1], nz = nrm[i * 3 + 2];
+      const ex = -wx, ey = -wy, ez = v.dist - wz, el = Math.hypot(ex, ey, ez);
+      if ((R[0] * nx + R[3] * ny + R[6] * nz) * ex + (R[1] * nx + R[4] * ny + R[7] * nz) * ey
+          + (R[2] * nx + R[5] * ny + R[8] * nz) * ez < -0.05 * el) continue;
+      const zc = v.dist - wz;
+      const px = (((f / v.aspect) * wx / zc) * v.scale + v.shiftX + 1) / 2 * v.w;
+      const py = (1 - ((f * wy / zc) * v.scale + v.shiftY)) / 2 * v.h;
+      const u = Math.max(0, Math.min(1, ((px - x0) * sx + (py - y0) * sy) / sl));
+      const dx = px - (x0 + u * sx), dy = py - (y0 + u * sy);
+      if (dx * dx + dy * dy > r * r) continue;
+      count++;
+      if (lock[i] >= 0) { if (hit[lock[i]] < 0 || i < hit[lock[i]]) hit[lock[i]] = i; } else strayHit.push(i);
+    }
+    if (!count) return 0;
+
+    // a lock comes loose from where it was cut down to its tip, and falls as one strand
+    for (let l = 0; l < nl; l++) {
+      const k = hit[l];
+      if (k < 0 || k >= lockEnd[l]) continue;
+      let cx = 0, cy = 0, cz = 0;
+      for (let i = k; i < lockEnd[l]; i++) { cx += world[i * 3]; cy += world[i * 3 + 1]; cz += world[i * 3 + 2]; }
+      const m = lockEnd[l] - k;
+      cx /= m; cy /= m; cz /= m;
+      // it slides off the head: outwards from its middle, a little towards the viewer
+      const hx = cx, hz = cz - PIVOT[2], hl = Math.hypot(hx, hz) || 1, out = rand(0.45, 0.85);
+      const vx = hx / hl * out + rand(-0.1, 0.1), vy = rand(0.1, 0.45), vz = hz / hl * out + 0.25;
+      const tumble = rand(-1.6, 1.6);
+      for (let i = k; i < lockEnd[l]; i++) loose(i, cx, cy, cz, vx, vy, vz, tumble, t);
+      lockEnd[l] = k;
+    }
+    for (const i of strayHit) {
+      if (!attached[i]) continue;
+      const hx = world[i * 3], hz = world[i * 3 + 2] - PIVOT[2], hl = Math.hypot(hx, hz) || 1, out = rand(0.3, 0.7);
+      loose(i, world[i * 3], world[i * 3 + 1], world[i * 3 + 2], hx / hl * out, rand(0.1, 0.5), hz / hl * out + 0.25, 0, t);
+    }
+
+    // what follows: stray dots with no lock left near them fall too
+    while (queueLock.length) {
+      const c0 = queueLock.pop();
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+        const c = c0 + (dx * dim[1] + dy) * dim[2] + dz;
+        for (let j = strayAt.start[c]; j < strayAt.start[c + 1]; j++) {
+          const i = strayAt.out[j];
+          if (attached[i] && near(lockCount, cell[i]) === 0) {
+            loose(i, world[i * 3], world[i * 3 + 1], world[i * 3 + 2], rand(-0.2, 0.2), rand(0, 0.25), rand(0, 0.2), 0, t + rand(0, 0.15));
+          }
+        }
+      }
+    }
+    return count;
+  }
+
+  /** Sends what changed to the GPU; once a frame, before drawing. */
+  function upload() {
+    if (dirtyHi > dirtyLo) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, dynBuf);
+      gl.bufferSubData(gl.ARRAY_BUFFER, dirtyLo * STATE * 4, dyn, dirtyLo * STATE, (dirtyHi - dirtyLo) * STATE);
+      dirtyLo = n; dirtyHi = 0;
+    }
+    if (trisDirty) {
+      let m = base;
+      for (let k = 0; k < nt; k++) {
+        if (!triAlive[k]) continue;
+        idxOut[m++] = idx[base + k * 3]; idxOut[m++] = idx[base + k * 3 + 1]; idxOut[m++] = idx[base + k * 3 + 2];
+      }
+      triCount = m;
+      gl.bindVertexArray(triVao);
+      gl.bufferSubData(gl.ELEMENT_ARRAY_BUFFER, 0, idxOut, 0, triCount);
+      gl.bindVertexArray(null);
+      trisDirty = false;
+    }
+  }
+
+  return { vao, first, count: n, cut, upload, triCount: () => triCount };
+}
+
 export async function createFace(canvas, { reduced = false } = {}) {
   const gl = canvas.getContext('webgl2', { antialias: true, alpha: true, premultipliedAlpha: true, depth: true });
   if (!gl) throw new Error('webgl2 unavailable');
@@ -308,7 +555,7 @@ export async function createFace(canvas, { reduced = false } = {}) {
   }
 
   const shared = ['uPosScale', 'uProj', 'uRot', 'uPivot', 'uDist', 'uShift', 'uScale'];
-  const P = program(gl, POINT_VERT, POINT_FRAG, [...shared, 'uTanHalf', 'uAspect', 'uTime', 'uViewH', 'uGaze', 'uScan', 'uFlight', 'uKeys', 'uLeader', 'uBurst', 'uShift0', 'uScale0']);
+  const P = program(gl, POINT_VERT, POINT_FRAG, [...shared, 'uTanHalf', 'uAspect', 'uTime', 'uViewH', 'uGaze', 'uScan', 'uFlight', 'uKeys', 'uLeader', 'uBurst', 'uShift0', 'uScale0', 'uIdBase']);
   const Ln = program(gl, LINE_VERT, LINE_FRAG, [...shared, 'uRevealY', 'uScan', 'uLeader', 'uHair', 'uTime']);
   const D = program(gl, DEPTH_VERT, DEPTH_FRAG, shared);
   const all = [P, Ln, D];
@@ -342,8 +589,14 @@ export async function createFace(canvas, { reduced = false } = {}) {
   gl.enableVertexAttribArray(0);
   gl.vertexAttribPointer(0, 3, gl.SHORT, false, meta.tris.stride, 0);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
-  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(bin, meta.tris.indexOffset, meta.tris.indices), gl.STATIC_DRAW);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(bin, meta.tris.indexOffset, meta.tris.indices), gl.DYNAMIC_DRAW);
   gl.bindVertexArray(null);
+  // the hair and the buzzcut in a draw call of their own, with a state per dot (shaving);
+  // in the first call the state is a constant: attached, never shown
+  const shaver = meta.shave ? createShaver(gl, bin, meta, triVao) : null;
+  gl.vertexAttrib4f(3, 0, 0, 0, -1);
+  gl.vertexAttrib4f(4, 0, 0, 0, 0);
+  gl.vertexAttrib3f(5, 0, 0, 0);
 
   for (const { p, u } of all) {
     gl.useProgram(p);
@@ -475,6 +728,7 @@ export async function createFace(canvas, { reduced = false } = {}) {
       gl.uniform1f(u.uScale, state.scale);
     }
 
+    if (shaver) shaver.upload();
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     if (depthOn) {
       gl.enable(gl.DEPTH_TEST);
@@ -483,7 +737,7 @@ export async function createFace(canvas, { reduced = false } = {}) {
       gl.colorMask(false, false, false, false);
       gl.useProgram(D.p);
       gl.bindVertexArray(triVao);
-      gl.drawElements(gl.TRIANGLES, meta.tris.indices, gl.UNSIGNED_SHORT, 0);
+      gl.drawElements(gl.TRIANGLES, shaver ? shaver.triCount() : meta.tris.indices, gl.UNSIGNED_SHORT, 0);
       gl.colorMask(true, true, true, true);
       gl.depthMask(false);
       gl.depthFunc(gl.LEQUAL);
@@ -514,8 +768,14 @@ export async function createFace(canvas, { reduced = false } = {}) {
     const from = state.burst || state;
     gl.uniform2f(P.u.uShift0, from.shiftX, from.shiftY);
     gl.uniform1f(P.u.uScale0, from.scale);
+    gl.uniform1i(P.u.uIdBase, 0);
     gl.bindVertexArray(pointVao);
-    gl.drawArrays(gl.POINTS, 0, meta.points.count);
+    gl.drawArrays(gl.POINTS, 0, shaver ? shaver.first : meta.points.count);
+    if (shaver) {
+      gl.uniform1i(P.u.uIdBase, shaver.first);
+      gl.bindVertexArray(shaver.vao);
+      gl.drawArrays(gl.POINTS, 0, shaver.count);
+    }
   }
 
   let raf = 0;
@@ -556,5 +816,16 @@ export async function createFace(canvas, { reduced = false } = {}) {
       return { left: x0, top: y0, width: x1 - x0, height: y1 - y0 };
     },
     center() { return project(0, (frame.top + frame.chin) / 2, 0.2); },
+    /** Shaving (app.js): the trimmer moved from (x0, y0) to (x1, y1), CSS px, cutting
+        r px around it. Returns how many hair dots it cut; 0 while the head is not
+        settled (the opening, a burst). */
+    shave(x0, y0, x1, y1, r) {
+      if (!shaver || elapsed() < FINISHED_AT || state.burst) return 0;
+      const at = placement();
+      return shaver.cut(x0, y0, x1, y1, r, {
+        rot: rotation(state.yaw, state.pitch), dist: state.dist, tan: Math.tan(FOV / 2), aspect: state.w / state.h,
+        w: state.w, h: state.h, shiftX: at.shiftX, shiftY: at.shiftY, scale: at.scale, now: elapsed(),
+      });
+    },
   };
 }

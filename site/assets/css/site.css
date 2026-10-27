@@ -466,6 +466,53 @@ a.kanaal-waarde:hover { color: var(--accent); }
 .vraag-status a { color: inherit; }
 .vraag button[disabled] { opacity: .55; pointer-events: none; }
 
+/* ---------- the easter egg: a code box and a beard trimmer (app.js) ---------- */
+.code { position: fixed; inset: 0; z-index: 7; display: grid; place-items: center; background: rgba(243, 245, 249, .4); }
+.code[hidden] { display: none; }
+.code-vak {
+  position: relative; width: min(340px, calc(100vw - 40px)); padding: 24px 26px 16px;
+  background:
+    linear-gradient(var(--accent), var(--accent)) top left / 16px 1px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) top left / 1px 16px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) bottom right / 16px 1px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) bottom right / 1px 16px no-repeat,
+    var(--panel);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 26px 64px -18px rgba(20, 27, 73, .3);
+  animation: fadeUp .45s var(--uit) both;
+}
+.code-vak.schud { animation: schud .4s; }
+@keyframes schud { 20%, 60% { transform: translateX(-7px); } 40%, 80% { transform: translateX(7px); } }
+.code-kop { font: 500 10.5px/1.2 var(--f-kop); letter-spacing: .26em; text-transform: uppercase; color: var(--ink-faint); }
+.code-kop::before { content: "// "; color: var(--accent); }
+.code-vak input {
+  width: 100%; margin-top: 14px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius);
+  font: 400 18px/1.2 var(--f-kop); letter-spacing: .3em; text-transform: uppercase; color: var(--ink-sterk);
+  background: rgba(255, 255, 255, .94); transition: border-color .25s, box-shadow .3s;
+}
+.code-vak input:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 20px -8px var(--accent-glow); }
+.code-status { min-height: 1.2em; margin-top: 10px; font: 500 10.5px/1.2 var(--f-kop); letter-spacing: .22em; text-transform: uppercase; }
+.code-status.goed { color: var(--accent); }
+.code-status.fout { color: var(--rood); }
+
+#tondeuse {
+  position: fixed; left: 0; top: 0; z-index: 6; width: 44px; height: 124px; pointer-events: none;
+  transform-origin: 22px 2px; opacity: 0; transition: opacity .15s;
+  filter: drop-shadow(0 12px 14px rgba(11, 16, 48, .28));
+}
+#tondeuse svg { display: block; }
+#tondeuse.zichtbaar { opacity: 1; }
+#tondeuse.snijdt svg { animation: zoem .06s linear infinite; }
+@keyframes zoem { 50% { transform: translate(.8px, -.6px); } }
+/* while shaving: the trimmer is the cursor over the face; the page does not scroll or zoom under a finger */
+html.scheren, html.scheren body, html.scheren #face { touch-action: none; overscroll-behavior: none; }
+html.scheren body:not(.open) { cursor: none; }
+html.scheren #menu, html.scheren #paneel, html.scheren #klok, html.scheren .scheer-uit, html.scheren .code { cursor: auto; }
+.scheer-uit { position: fixed; z-index: 6; left: 50%; bottom: 22px; transform: translateX(-50%); }
+.scheer-uit[hidden] { display: none; }
+/* while shaving the readout steps aside: on a phone it sits right under the head */
+html.scheren #readout > div { opacity: 0; transition-delay: 0s; }
+
 /* ---------- footer ---------- */
 #voet {
   position: fixed; z-index: 4; left: var(--rand); right: var(--rand); bottom: 18px;
@@ -523,6 +570,7 @@ body.geen-gl #readout { display: none; }
   #readout { font-size: 9.5px; }
   #readout > div { grid-template-columns: 88px auto; padding: 5px 0; }
   #watermerk { font-size: calc((100vw - 36px) / 6.7); bottom: 60px; }
+  .scheer-uit { bottom: auto; top: 76px; }
 }
 
 /* Whoever turned animations off gets the same screens, standing still. */

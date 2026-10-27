@@ -32,6 +32,8 @@ from mediapipe.tasks.python.vision import FaceLandmarksConnections as FLC
 from build_face import (HERE, ROOT, K_SKIN, K_NECK, K_IRIS, K_CONTOUR, K_NODE, K_KEY, K_TIP, K_HAIR,
                         L_HAIR, load_obj, poisson_disk, sample_mesh)
 
+K_STUBBLE = 8                                                    # the buzzcut under the hair, shown once the hair is shaved off
+
 # the solids, in the canonical model's centimetres (x right, y up, z towards the viewer)
 CRANIUM = dict(c=(0.0, 3.0, -4.25), r=(7.9, 10.6, 9.75), n=2.2)
 # fitted just inside the face's jaw edge seen from the front, and ending above the chin:
@@ -683,13 +685,43 @@ def main():
         hair_dot = clear_of_head(hair_dot)
         hair_occ_v = clear_of_head(hair_occ_v)
         keep = trim_locks(hair_dot, hair_lock, np.random.default_rng(6))
-        hair_dot, hair_dot_n, hair_dot_tone = hair_dot[keep], hair_dot_n[keep], hair_dot_tone[keep]
+        hair_dot, hair_dot_n, hair_dot_tone, hair_lock = hair_dot[keep], hair_dot_n[keep], hair_dot_tone[keep], hair_lock[keep]
         hair_extent = [hair_dot]
         # the occluder ends with the hair, so nothing hides behind hair that is not there
         hair_occ_f = hair_occ_f[hair_occ_v[hair_occ_f].mean(1)[:, 1] > chin_cut]
         print('hair cut at the chin: %d of %d dots gone' % ((~keep).sum(), len(keep)))
     else:
         hair_extent = list(hair_v)
+        hair_lock = np.full(len(hair_dot), -1)
+
+    # 2c. the buzzcut: short dark stubble on the scalp under the hair, hidden until the
+    # hair over it is shaved off (face.js). Only on the scalp: above the ears at the
+    # sides, down to the nape at the back, not on the ears; and only under the hair.
+    p_stub, n_stub = dots(gp, head_tris, gn, 0.2, 7)
+    ear = np.zeros(len(p_stub), bool)
+    for e_ in EARS:
+        ear |= (np.abs((p_stub - np.array(e_['c'])) / (np.array(e_['r']) + 0.6)) ** 2).sum(1) < 1
+    scalp = ((p_stub[:, 1] > 1.0) | ((p_stub[:, 1] > -3.5) & (p_stub[:, 2] < -4.5))) & ~ear
+    if len(hair_dot):
+        # under hair: hair lies straight out from the middle of the head through the dot
+        from scipy.spatial import cKDTree as _Tree
+        c0 = np.array(CRANIUM['c'])
+        unit = lambda p: (p - c0) / np.linalg.norm(p - c0, axis=1, keepdims=True)
+        d, above = _Tree(unit(hair_dot)).query(unit(p_stub))
+        scalp &= (d < 0.05) & (np.linalg.norm(hair_dot[above] - c0, axis=1) > np.linalg.norm(p_stub - c0, axis=1))
+    else:
+        scalp[:] = False
+        above = np.zeros(len(p_stub), int)
+    # each stubble dot shows once the hair dot straight above it has been shaved off
+    p_stub, n_stub, stub_above = p_stub[scalp], n_stub[scalp], above[scalp]
+    # likewise each triangle of the hair's occluder: the sculpt has an inner side too,
+    # just above the scalp, with no hair dots near it
+    if len(hair_dot) and len(hair_occ_f):
+        tri_above = _Tree(unit(hair_dot)).query(unit(hair_occ_v[hair_occ_f].mean(1)))[1]
+    else:
+        tri_above = np.zeros(len(hair_occ_f), int)
+    stub_tone = 0.45 + np.random.default_rng(8).uniform(0, 0.25, len(p_stub))
+    print('stubble', len(p_stub), 'dots')
 
     # 3. bright clusters along the features, like a scan picking them out
     def contour(conns, spacing, tone, jitter, seed, keep=None):
@@ -790,7 +822,9 @@ def main():
         rec(c_pts, c_nrm, K_CONTOUR, c_tone),
         rec(i_pts, i_nrm, K_IRIS, 0.9),
         rec(hair_dot, hair_dot_n, K_HAIR, hair_dot_tone),
+        rec(p_stub, n_stub, K_STUBBLE, stub_tone),
     ])
+    hair_first = len(pts) - len(p_stub) - len(hair_dot)              # the hair and the stubble close the list
 
     lines = np.zeros(0, dtype=dt)                                    # no line segments any more
     # hair: line strips, each strand's points once; index 0xFFFF starts the next
@@ -814,6 +848,16 @@ def main():
     o_hair += (-o_hair) % 4                                           # keep the vertex data 4-byte aligned
     blob = pts.tobytes() + lines.tobytes() + tv.tobytes() + tri_i.tobytes()
     blob += b'\0' * (o_hair - len(blob)) + hair.tobytes() + hair_i.tobytes()
+    # which lock each hair dot belongs to (-1 between the locks); the dots of a lock
+    # follow each other in the list from the root to the tip
+    o_locks = len(blob) + len(blob) % 2
+    blob += b'\0' * (o_locks - len(blob)) + np.asarray(hair_lock, '<i2').tobytes()
+    o_above = len(blob)                                               # and the hair dot above each stubble dot
+    assert len(hair_dot) < 0xFFFF
+    blob += np.asarray(stub_above, '<u2').tobytes()
+    # and above each triangle of the hair's occluder (it goes once that dot is shaved off)
+    o_tri_above = len(blob)
+    blob += np.asarray(tri_above, '<u2').tobytes()
     with open(os.path.join(args.out, 'face.bin'), 'wb') as fh:
         fh.write(blob)
     allp = P(np.concatenate([p_face, p_head] + hair_extent))
@@ -824,9 +868,13 @@ def main():
         points=dict(offset=0, count=int(len(pts)), stride=12),
         lines=dict(offset=int(pts.nbytes), count=int(len(lines)), stride=12),
         tris=dict(offset=int(pts.nbytes + lines.nbytes), vertices=int(len(tv)), stride=8,
-                  indexOffset=int(pts.nbytes + lines.nbytes + tv.nbytes), indices=int(len(tri_i))),
+                  indexOffset=int(pts.nbytes + lines.nbytes + tv.nbytes), indices=int(len(tri_i)),
+                  hairIndexStart=int(3 * (len(face_f) + len(head_tris)))),   # the hair's occluder triangles from here on
+        shave=dict(hairFirst=int(hair_first), hairCount=int(len(hair_dot)), stubbleCount=int(len(p_stub)),
+                   locksOffset=int(o_locks), aboveOffset=int(o_above), triAboveOffset=int(o_tri_above)),
         iris=dict(radius=float(rad * scale)),
-        kinds=dict(skin=K_SKIN, hair=K_HAIR, neck=K_NECK, iris=K_IRIS, contour=K_CONTOUR, node=K_NODE, key=K_KEY, tip=K_TIP),
+        kinds=dict(skin=K_SKIN, hair=K_HAIR, neck=K_NECK, iris=K_IRIS, contour=K_CONTOUR, node=K_NODE, key=K_KEY, tip=K_TIP,
+                   stubble=K_STUBBLE),
         frame=dict(x=float(np.abs(allp[allp[:, 1] > chin, 0]).max().round(3)), top=float(allp[:, 1].max().round(3)),
                    chin=round(chin, 3)),
     )

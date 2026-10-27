@@ -48,6 +48,14 @@ A skill in the Skills tab is one `<details class="project vaardigheid">` card: t
 it comes from, and each source in its trace is one `<li class="knoop">`. Every source should be an
 entry on the CV.
 
+## The easter egg
+
+Four quick taps or clicks on the face (each within half a second of the last) open a code box.
+The code is `kabouter`; it hands over a beard trimmer. With a mouse it follows the pointer; on a
+touch screen it appears while a finger is down. Whatever hair it passes over comes loose from
+there to the tip and falls; underneath, a buzzcut shows. "Put the trimmer down" (or Escape)
+ends it; a reload brings the hair back. The code is in `site/assets/js/app.js` (`CODE`).
+
 ## The question form
 
 "Ask a question" in the Contact tab sends the question to the inbox through
