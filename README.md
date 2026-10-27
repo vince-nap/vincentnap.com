@@ -44,8 +44,9 @@ existing one and change the text. The CV tab's "Download CV (PDF)" button serves
 Short links work once deployed: `vincentnap.com/cv`, `/projects`, `/history`, `/contact`, `/skills`
 (also `vincentnap.com/#cv` and so on).
 
-A skill in the Skills tab is one `<details class="vaardigheid">`; each source under it is one
-`<li class="bron">`, and every source should be an entry on the CV.
+A skill in the Skills tab is one `<details class="project vaardigheid">` card: the tags list where
+it comes from, and each source in its trace is one `<li class="knoop">`. Every source should be an
+entry on the CV.
 
 ## The question form
 

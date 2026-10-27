@@ -19,7 +19,8 @@ python tools/face/prepare_hair.py path/to/hair.obj     # writes tools/face/input
 ```
 
 Without that file the builder makes a bald head (or `--procedural-hair` for the old generated hair).
-Where the reshaped jaw would reach into the hair, the hair is pushed outward clear of the head.
+The hair is trimmed at the ears (each lock ending at its own height): below them it only hung
+down beside the jaw and crossed the jawline.
 
 Two extras are built in but off on the site: `--glasses` (the frames from the photo, as dots) and
 `--birthmark` (the mark by the right nostril).
