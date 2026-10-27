@@ -19,7 +19,8 @@ python tools/face/prepare_hair.py path/to/hair.obj     # writes tools/face/input
 ```
 
 Without that file the builder makes a bald head (or `--procedural-hair` for the old generated hair).
-Where the jaw reaches into the hair, the hair is pushed outward clear of the head. The jaw solid
+The hair is cut at the height of the chin, each lock ending a little higher or lower than the
+next. Where the jaw reaches into the hair, the hair is pushed outward clear of the head. The jaw solid
 behind the face sits just inside the face's own jaw edge, so only one jawline shows.
 
 Two extras are built in but off on the site: `--glasses` (the frames from the photo, as dots) and

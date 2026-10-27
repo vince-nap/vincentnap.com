@@ -522,7 +522,7 @@ body.geen-gl #readout { display: none; }
   .inleiding { font-size: 16.5px; }
   #readout { font-size: 9.5px; }
   #readout > div { grid-template-columns: 88px auto; padding: 5px 0; }
-  #watermerk { font-size: 64px; bottom: 60px; }
+  #watermerk { font-size: calc((100vw - 36px) / 6.7); bottom: 60px; }
 }
 
 /* Whoever turned animations off gets the same screens, standing still. */

@@ -345,8 +345,8 @@ def sculpted_hair(path, rng):
 
     # dots: scattered loosely along every flow line (irregular steps, pushed a little
     # to either side, a tone per lock), and a light scatter over the surface in between
-    s_dots, s_n, s_tone = [], [], []
-    for pts, nrm in zip(lines, normals):
+    s_dots, s_n, s_tone, s_lock = [], [], [], []
+    for li, (pts, nrm) in enumerate(zip(lines, normals)):
         sl = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))])
         at = np.cumsum(rng.uniform(0.1, 0.32, int(sl[-1] / 0.1) + 2))
         at = at[at <= sl[-1]]
@@ -358,15 +358,17 @@ def sculpted_hair(path, rng):
         s_dots.append(p + side * rng.normal(0, 0.07, (len(at), 1)))
         s_n.append(n)
         s_tone.append(np.clip(rng.uniform(0.32, 0.6) + rng.normal(0, 0.06, len(at)), 0, 1))
+        s_lock.append(np.full(len(at), li))
     k = poisson_disk(sp, 0.24, 22)
     dots = np.concatenate(s_dots + [sp[k]])
     dots_n = np.concatenate(s_n + [sn[k]])
     dots_n /= np.linalg.norm(dots_n, axis=1, keepdims=True) + 1e-9
     tone = np.concatenate(s_tone + [rng.uniform(0.2, 0.36, len(k))])
+    lock = np.concatenate(s_lock + [np.full(len(k), -1)])             # the flow line of each dot, -1 between them
 
     # a coarse copy of the hair as an occluder
     ov, of = fast_simplification.simplify(h.astype(np.float32), f.astype(np.int32), target_reduction=1 - 9000 / len(f))
-    return lines, normals, hair_t, dots, dots_n, tone, ov.astype(float), of.astype(np.int64)
+    return lines, normals, hair_t, dots, dots_n, tone, lock, ov.astype(float), of.astype(np.int64)
 
 
 def main():
@@ -657,9 +659,22 @@ def main():
         print('hair pushed clear of the head: %d of %d points, at most %.2f cm' % ((push > 0.01).sum(), len(p), push.max()))
         return p + d * push[:, None]
 
+    # the hair is cut at the height of the chin; each lock ends a little higher or
+    # lower than the next, so the ends stay ragged
+    chin_cut = face_v[152, 1]
+
+    def trim_locks(dots, lock, rng):
+        end = chin_cut + rng.uniform(-0.6, 0.6, lock.max() + 2)
+        limit = np.where(lock >= 0, end[lock], chin_cut + rng.uniform(-0.6, 0.6, len(lock)))
+        gone = dots[:, 1] < limit
+        for li in np.unique(lock[gone & (lock >= 0)]):
+            idx = np.where(lock == li)[0]                             # in order along the lock, downwards
+            gone[idx[np.argmax(gone[idx]):]] = True
+        return ~gone
+
     hair_occ_v, hair_occ_f = np.zeros((0, 3)), np.zeros((0, 3), np.int64)
     if not args.procedural_hair and args.hair_mesh and os.path.exists(args.hair_mesh):
-        (strand_v, _, _, hair_dot, hair_dot_n, hair_dot_tone,
+        (strand_v, _, _, hair_dot, hair_dot_n, hair_dot_tone, hair_lock,
          hair_occ_v, hair_occ_f) = sculpted_hair(args.hair_mesh, np.random.default_rng(5))
         hair_v = []                                                  # dots only, no lines
         hair_extent = list(strand_v)
@@ -667,6 +682,12 @@ def main():
         # push it out (a lock moves as a whole, so the push is spread over neighbours)
         hair_dot = clear_of_head(hair_dot)
         hair_occ_v = clear_of_head(hair_occ_v)
+        keep = trim_locks(hair_dot, hair_lock, np.random.default_rng(6))
+        hair_dot, hair_dot_n, hair_dot_tone = hair_dot[keep], hair_dot_n[keep], hair_dot_tone[keep]
+        hair_extent = [hair_dot]
+        # the occluder ends with the hair, so nothing hides behind hair that is not there
+        hair_occ_f = hair_occ_f[hair_occ_v[hair_occ_f].mean(1)[:, 1] > chin_cut]
+        print('hair cut at the chin: %d of %d dots gone' % ((~keep).sum(), len(keep)))
     else:
         hair_extent = list(hair_v)
 
