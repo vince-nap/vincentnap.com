@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 Builds the generic face for the landing page: a neutral head that is nobody in
-particular, with long wavy hair parted in the middle, as a wireframe with sparse
-dots, bright clusters along the features and eight tracking points. No photos
-are used.
+particular, as a wireframe with sparse dots, bright clusters along the features
+and eight tracking points. No photos are used. (--procedural-hair adds generated
+long wavy hair; it is not used on the site.)
 
 The face is MediaPipe's canonical face model (an average face, symmetric, in
 centimetres). Around it the rest of the head is made of simple solids:
@@ -80,6 +80,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--models', default=os.path.join(HERE, 'models'))
     ap.add_argument('--out', default=os.path.join(ROOT, 'site', 'assets', 'face'))
+    ap.add_argument('--procedural-hair', action='store_true', help='grow the generated hair (not used on the site)')
     args = ap.parse_args()
 
     face_v, face_f = load_obj(os.path.join(args.models, 'canonical_face_model.obj'))
@@ -197,138 +198,145 @@ def main():
     head_kind = np.where(p_head[:, 1] < face_v[152, 1] - 0.6, K_NECK, K_SKIN)
     head_tone = 0.12 + rng.uniform(0, 0.08, len(p_head))
 
-    # 2b. the hair: long and wavy, parted in the middle. Strands grow from the
-    # parting over the head, combed by gravity: sideways over the top and across
-    # the temples (the curtains), down over the sides, back behind the ears. Above
-    # the ears they lie on the head; lower down they hang free, with more volume,
-    # to the jaw at the sides and the collar at the back, and flick out at the ends.
-    # Waves are shared per lock of strands and grow towards the tips.
-    brow_top = face_v[sorted({c.start for c in FLC.FACE_LANDMARKS_LEFT_EYEBROW}), 1].max()
-    top_line = face_v[10, 1] - 0.4
+    # 2b. procedural hair: off by default (python build_generic.py --procedural-hair).
+    # A modelled hairstyle is to replace it.
+    if args.procedural_hair:
+        # 2b. the hair: long and wavy, parted in the middle. Strands grow from the
+        # parting over the head, combed by gravity: sideways over the top and across
+        # the temples (the curtains), down over the sides, back behind the ears. Above
+        # the ears they lie on the head; lower down they hang free, with more volume,
+        # to the jaw at the sides and the collar at the back, and flick out at the ends.
+        # Waves are shared per lock of strands and grow towards the tips.
+        brow_top = face_v[sorted({c.start for c in FLC.FACE_LANDMARKS_LEFT_EYEBROW}), 1].max()
+        top_line = face_v[10, 1] - 0.4
 
-    def hairline(x):
-        return brow_top + 1.3 + (top_line - brow_top - 1.3) * (1 - np.clip(np.abs(x) / 5.2, 0, 1)) ** 1.4
+        def hairline(x):
+            return brow_top + 1.3 + (top_line - brow_top - 1.3) * (1 - np.clip(np.abs(x) / 5.2, 0, 1)) ** 1.4
 
-    def hair_end(p):
-        return np.interp(p[:, 2], [-10.0, -2.0], [-11.5, -8.8])
+        def hair_end(p):
+            return np.interp(p[:, 2], [-10.0, -2.0], [-11.5, -8.8])
 
-    def in_hair(p, n):
-        face_zone = (n[:, 2] > 0.3) & (np.abs(p[:, 0]) < 6.9) & (p[:, 1] < hairline(p[:, 0]))
-        cheek = (p[:, 2] > -1.2) & (p[:, 1] < 2.2) & (n[:, 2] > -0.2)    # in front of the ears
-        return ~(face_zone | cheek | (p[:, 1] < hair_end(p)))
+        def in_hair(p, n):
+            face_zone = (n[:, 2] > 0.3) & (np.abs(p[:, 0]) < 6.9) & (p[:, 1] < hairline(p[:, 0]))
+            cheek = (p[:, 2] > -1.2) & (p[:, 1] < 2.2) & (n[:, 2] > -0.2)    # in front of the ears
+            return ~(face_zone | cheek | (p[:, 1] < hair_end(p)))
 
-    axis_z = lambda y: np.interp(y, [NECK['y0'], -4.0, c0[1]], [NECK['cz'], -3.4, c0[2]])
+        axis_z = lambda y: np.interp(y, [NECK['y0'], -4.0, c0[1]], [NECK['cz'], -3.4, c0[2]])
 
-    def place(p, off):
-        """On the head (plus the hair's thickness) above the ears; below them hanging free, never inside."""
-        y = p[:, 1]
-        o = np.where((y > c0[1])[:, None], c0[None], np.stack([np.zeros(len(p)), y, axis_z(y)], 1))
-        d = p - o
-        d /= np.linalg.norm(d, axis=1, keepdims=True) + 1e-9
-        surf, _ = surface(o, d)
-        # thicker on top, fuller again where it hangs
-        rs = np.linalg.norm(surf - o, axis=1) + off + 0.5 * np.clip((y - 4.0) / 4.0, 0, 1) + 0.9 * np.clip((4.0 - y) / 9.0, 0, 1)
-        rp = np.linalg.norm(p - o, axis=1)
-        return o + d * np.where(y > 0.5, rs, np.maximum(rs, rp))[:, None], d
-
-    hr = np.random.default_rng(11)
-
-    def grow(roots, sides, steps, step=0.4, lift=None):
-        n = len(roots)
-        base = hr.uniform(0.75, 1.5, n)
-        lift = np.zeros(n) if lift is None else lift
-        end = hair_end(roots) - hr.uniform(0, 0.9, n)
-        travelled = np.zeros(n)
-        off = base + lift
-        pos, nrm = place(roots, off)
-        path, alive, miss, count, last = [pos.copy()], np.ones(n, bool), np.zeros(n, int), np.ones(n, int), np.zeros((n, 3))
-        for k in range(steps):
-            sideness = np.clip(np.abs(nrm[:, 0]) + 0.6 * np.maximum(-nrm[:, 2], 0), 0, 1)
-            w = np.clip(0.25 + 0.85 * np.clip((sideness - 0.35) / 0.5, 0, 1), 0, 1) * (1 - 0.6 * np.maximum(nrm[:, 1], 0))
-            d = np.stack([(1 - w) * sides, -w, np.zeros(n)], 1)
-            ear = (np.abs(pos[:, 0]) > 5.5) * np.exp(-((pos[:, 1] - 0.3) / 3.2) ** 2) * np.clip((pos[:, 2] + 6.0) / 3.0, 0, 1)
-            d[:, 2] -= 0.95 * ear
-            d -= (d * nrm).sum(1, keepdims=True) * nrm * (pos[:, 1] > 0.5)[:, None]
+        def place(p, off):
+            """On the head (plus the hair's thickness) above the ears; below them hanging free, never inside."""
+            y = p[:, 1]
+            o = np.where((y > c0[1])[:, None], c0[None], np.stack([np.zeros(len(p)), y, axis_z(y)], 1))
+            d = p - o
             d /= np.linalg.norm(d, axis=1, keepdims=True) + 1e-9
-            if k:
-                d = 0.6 * d + 0.4 * last
+            surf, _ = surface(o, d)
+            # thicker on top, fuller again where it hangs
+            rs = np.linalg.norm(surf - o, axis=1) + off + 0.5 * np.clip((y - 4.0) / 4.0, 0, 1) + 0.9 * np.clip((4.0 - y) / 9.0, 0, 1)
+            rp = np.linalg.norm(p - o, axis=1)
+            return o + d * np.where(y > 0.5, rs, np.maximum(rs, rp))[:, None], d
+
+        hr = np.random.default_rng(11)
+
+        def grow(roots, sides, steps, step=0.4, lift=None):
+            n = len(roots)
+            base = hr.uniform(0.75, 1.5, n)
+            lift = np.zeros(n) if lift is None else lift
+            end = hair_end(roots) - hr.uniform(0, 0.9, n)
+            travelled = np.zeros(n)
+            off = base + lift
+            pos, nrm = place(roots, off)
+            path, alive, miss, count, last = [pos.copy()], np.ones(n, bool), np.zeros(n, int), np.ones(n, int), np.zeros((n, 3))
+            for k in range(steps):
+                sideness = np.clip(np.abs(nrm[:, 0]) + 0.6 * np.maximum(-nrm[:, 2], 0), 0, 1)
+                w = np.clip(0.25 + 0.85 * np.clip((sideness - 0.35) / 0.5, 0, 1), 0, 1) * (1 - 0.6 * np.maximum(nrm[:, 1], 0))
+                d = np.stack([(1 - w) * sides, -w, np.zeros(n)], 1)
+                ear = (np.abs(pos[:, 0]) > 5.5) * np.exp(-((pos[:, 1] - 0.3) / 3.2) ** 2) * np.clip((pos[:, 2] + 6.0) / 3.0, 0, 1)
+                d[:, 2] -= 0.95 * ear
+                d -= (d * nrm).sum(1, keepdims=True) * nrm * (pos[:, 1] > 0.5)[:, None]
                 d /= np.linalg.norm(d, axis=1, keepdims=True) + 1e-9
-            travelled += step
-            off = base + lift * np.exp(-travelled / 2.2)                 # the curtains rise from the parting
-            new, nn = place(pos + d * step, off)
-            miss = np.where(in_hair(new, nn), 0, miss + 1)
-            alive &= (miss < 2) & (new[:, 1] > end)
-            pos = np.where(alive[:, None], new, pos)
-            nrm = np.where(alive[:, None], nn, nrm)
-            last = np.where(alive[:, None], d, last)
-            count += alive
-            path.append(pos.copy())
-            if not alive.any():
-                break
-        path = np.stack(path, 1)
-        out = []
-        for i in range(n):
-            pts = path[i, :count[i]]
-            if len(pts) < 5:
-                continue
-            if last[i, 1] < -0.4 and pts[-1, 1] < -3.0:                # falling ends flick out
-                _, on = place(pts[-1:], off[i:i + 1])
-                for kk in range(1, 4):
-                    dd = last[i] + on[0] * 0.5 * kk + np.array([0, 0.22 * kk, 0])
-                    pts = np.vstack([pts, pts[-1] + dd / np.linalg.norm(dd) * step * 0.9])
-            out.append((pts, off[i]))
-        return out
+                if k:
+                    d = 0.6 * d + 0.4 * last
+                    d /= np.linalg.norm(d, axis=1, keepdims=True) + 1e-9
+                travelled += step
+                off = base + lift * np.exp(-travelled / 2.2)                 # the curtains rise from the parting
+                new, nn = place(pos + d * step, off)
+                miss = np.where(in_hair(new, nn), 0, miss + 1)
+                alive &= (miss < 2) & (new[:, 1] > end)
+                pos = np.where(alive[:, None], new, pos)
+                nrm = np.where(alive[:, None], nn, nrm)
+                last = np.where(alive[:, None], d, last)
+                count += alive
+                path.append(pos.copy())
+                if not alive.any():
+                    break
+            path = np.stack(path, 1)
+            out = []
+            for i in range(n):
+                pts = path[i, :count[i]]
+                if len(pts) < 5:
+                    continue
+                if last[i, 1] < -0.4 and pts[-1, 1] < -3.0:                # falling ends flick out
+                    _, on = place(pts[-1:], off[i:i + 1])
+                    for kk in range(1, 4):
+                        dd = last[i] + on[0] * 0.5 * kk + np.array([0, 0.22 * kk, 0])
+                        pts = np.vstack([pts, pts[-1] + dd / np.linalg.norm(dd) * step * 0.9])
+                out.append((pts, off[i]))
+            return out
 
-    strands, locks = [], []
-    roots, sides, lock_ids, lifts = [], [], [], []
-    for idx, phi in enumerate(np.radians(np.arange(-61, 52, 1.5))):
-        rp, _ = surface(c0[None], np.array([[0.0, np.cos(phi), -np.sin(phi)]]))
-        for side in (-1, 1):
-            for j in range(2):
-                roots.append(rp[0] + np.array([side * (0.08 + 0.18 * j + hr.normal(0, 0.03)), hr.normal(0, 0.06), 0]))
-                sides.append(side); lock_ids.append(('p', side, idx // 2))
-                lifts.append(1.5 * np.clip(rp[0, 2] / 4.0, 0, 1) * hr.uniform(0.6, 1.0))
-    for (pts, _), lk in zip(grow(np.array(roots), np.array(sides, float), 75, lift=np.array(lifts)), lock_ids):
-        strands.append(pts); locks.append(lk)
-    # shorter strands rooted all over the hair for coverage, and a band behind the
-    # ears for the hair that hangs to the jaw and the collar
-    cand = gp[(gp[:, 1] > -6) & in_hair(gp, gn) & ~((np.abs(gp[:, 0]) < 1.5) & (gn[:, 1] > 0.7))]
-    cand = cand + hr.normal(0, 0.3, cand.shape)
-    band = gp[(gp[:, 1] > -2.5) & (gp[:, 1] < 4.0) & (gp[:, 2] < -3.0) & in_hair(gp, gn)]
-    band = np.concatenate([band + hr.normal(0, 0.35, band.shape) for _ in range(3)])
-    fill = np.concatenate([cand[poisson_disk(cand, 1.1, 12)], band[poisson_disk(band, 0.8, 13)]])
-    f_sides = np.where(np.abs(fill[:, 0]) < 0.15, hr.choice([-1.0, 1.0], len(fill)), np.sign(fill[:, 0]))
-    for (pts, _), r0 in zip(grow(fill, f_sides, 40), fill):
-        strands.append(pts); locks.append(('f',) + tuple(np.round(r0 / 1.4).astype(int)))
+        strands, locks = [], []
+        roots, sides, lock_ids, lifts = [], [], [], []
+        for idx, phi in enumerate(np.radians(np.arange(-61, 52, 1.5))):
+            rp, _ = surface(c0[None], np.array([[0.0, np.cos(phi), -np.sin(phi)]]))
+            for side in (-1, 1):
+                for j in range(2):
+                    roots.append(rp[0] + np.array([side * (0.08 + 0.18 * j + hr.normal(0, 0.03)), hr.normal(0, 0.06), 0]))
+                    sides.append(side); lock_ids.append(('p', side, idx // 2))
+                    lifts.append(1.5 * np.clip(rp[0, 2] / 4.0, 0, 1) * hr.uniform(0.6, 1.0))
+        for (pts, _), lk in zip(grow(np.array(roots), np.array(sides, float), 75, lift=np.array(lifts)), lock_ids):
+            strands.append(pts); locks.append(lk)
+        # shorter strands rooted all over the hair for coverage, and a band behind the
+        # ears for the hair that hangs to the jaw and the collar
+        cand = gp[(gp[:, 1] > -6) & in_hair(gp, gn) & ~((np.abs(gp[:, 0]) < 1.5) & (gn[:, 1] > 0.7))]
+        cand = cand + hr.normal(0, 0.3, cand.shape)
+        band = gp[(gp[:, 1] > -2.5) & (gp[:, 1] < 4.0) & (gp[:, 2] < -3.0) & in_hair(gp, gn)]
+        band = np.concatenate([band + hr.normal(0, 0.35, band.shape) for _ in range(3)])
+        fill = np.concatenate([cand[poisson_disk(cand, 1.1, 12)], band[poisson_disk(band, 0.8, 13)]])
+        f_sides = np.where(np.abs(fill[:, 0]) < 0.15, hr.choice([-1.0, 1.0], len(fill)), np.sign(fill[:, 0]))
+        for (pts, _), r0 in zip(grow(fill, f_sides, 40), fill):
+            strands.append(pts); locks.append(('f',) + tuple(np.round(r0 / 1.4).astype(int)))
 
-    lock_look = {}
-    hair_v, hair_n, hair_t, hair_dot, hair_dot_n, hair_dot_tone = [], [], [], [], [], []
-    for pts, lk in zip(strands, locks):
-        if lk not in lock_look:
-            lock_look[lk] = (hr.uniform(0, 2 * np.pi), hr.uniform(2.6, 3.4), hr.uniform(0.45, 0.9))
-        ph, lam, tone = lock_look[lk]
-        ph += hr.normal(0, 0.35)
-        sl = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))])
-        tan = np.gradient(pts, axis=0)
-        tan /= np.linalg.norm(tan, axis=1, keepdims=True) + 1e-9
-        y = pts[:, 1]
-        o = np.where((y > c0[1])[:, None], c0[None], np.stack([np.zeros(len(pts)), y, axis_z(y)], 1))
-        nrm = pts - o
-        nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-9
-        b = np.cross(nrm, tan)
-        b /= np.linalg.norm(b, axis=1, keepdims=True) + 1e-9
-        amp = 0.05 + 0.42 * np.clip(sl / 9.0, 0, 1) ** 1.3
-        w = pts + b * (amp * np.sin(2 * np.pi * sl / lam + ph))[:, None]
-        hair_v.append(w); hair_n.append(nrm); hair_t.append(sl / max(sl[-1], 1e-6))
-        hair_dot.append(w[::5]); hair_dot_n.append(nrm[::5]); hair_dot_tone.append(np.full(len(w[::5]), tone))
-    hair_dot, hair_dot_n, hair_dot_tone = np.concatenate(hair_dot), np.concatenate(hair_dot_n), np.concatenate(hair_dot_tone)
-    print('hair strands', len(hair_v), 'segments', sum(len(v) - 1 for v in hair_v))
+        lock_look = {}
+        hair_v, hair_n, hair_t, hair_dot, hair_dot_n, hair_dot_tone = [], [], [], [], [], []
+        for pts, lk in zip(strands, locks):
+            if lk not in lock_look:
+                lock_look[lk] = (hr.uniform(0, 2 * np.pi), hr.uniform(2.6, 3.4), hr.uniform(0.45, 0.9))
+            ph, lam, tone = lock_look[lk]
+            ph += hr.normal(0, 0.35)
+            sl = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))])
+            tan = np.gradient(pts, axis=0)
+            tan /= np.linalg.norm(tan, axis=1, keepdims=True) + 1e-9
+            y = pts[:, 1]
+            o = np.where((y > c0[1])[:, None], c0[None], np.stack([np.zeros(len(pts)), y, axis_z(y)], 1))
+            nrm = pts - o
+            nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-9
+            b = np.cross(nrm, tan)
+            b /= np.linalg.norm(b, axis=1, keepdims=True) + 1e-9
+            amp = 0.05 + 0.42 * np.clip(sl / 9.0, 0, 1) ** 1.3
+            w = pts + b * (amp * np.sin(2 * np.pi * sl / lam + ph))[:, None]
+            hair_v.append(w); hair_n.append(nrm); hair_t.append(sl / max(sl[-1], 1e-6))
+            hair_dot.append(w[::5]); hair_dot_n.append(nrm[::5]); hair_dot_tone.append(np.full(len(w[::5]), tone))
+        hair_dot, hair_dot_n, hair_dot_tone = np.concatenate(hair_dot), np.concatenate(hair_dot_n), np.concatenate(hair_dot_tone)
+        print('hair strands', len(hair_v), 'segments', sum(len(v) - 1 for v in hair_v))
 
-    # the hair hides the head grid and the scattered dots under it
-    grid_hair = in_hair(gp, gn) & ~covered
-    head_edges = head_edges[~grid_hair[head_edges].all(1)]
-    under = in_hair(p_head, n_head)
-    p_head, n_head, head_kind, head_tone = p_head[~under], n_head[~under], head_kind[~under], head_tone[~under]
+        # the hair hides the head grid and the scattered dots under it
+        grid_hair = in_hair(gp, gn) & ~covered
+        head_edges = head_edges[~grid_hair[head_edges].all(1)]
+        under = in_hair(p_head, n_head)
+        p_head, n_head, head_kind, head_tone = p_head[~under], n_head[~under], head_kind[~under], head_tone[~under]
+    else:
+        hair_v, hair_n, hair_t = [], [], []
+        hair_dot, hair_dot_n, hair_dot_tone = np.zeros((0, 3)), np.zeros((0, 3)), np.zeros(0)
+        grid_hair = np.zeros(len(gp), bool)
 
     # 3. bright clusters along the features, like a scan picking them out
     def contour(conns, spacing, tone, jitter, seed, keep=None):
@@ -432,10 +440,13 @@ def main():
     ])
     # hair: line strips, each strand's points once; index 0xFFFF starts the next
     # strand (primitive restart). t runs from 0 at the root to 255 at the tip.
-    hair = rec(np.concatenate(hair_v), np.concatenate(hair_n), L_HAIR, np.concatenate(hair_t))
-    starts = np.cumsum([0] + [len(v) for v in hair_v[:-1]])
-    hair_i = np.concatenate([np.append(np.arange(st, st + len(v)), 0xFFFF) for st, v in zip(starts, hair_v)]).astype(np.uint16)
-    assert len(hair) < 0xFFFF
+    if hair_v:
+        hair = rec(np.concatenate(hair_v), np.concatenate(hair_n), L_HAIR, np.concatenate(hair_t))
+        starts = np.cumsum([0] + [len(v) for v in hair_v[:-1]])
+        hair_i = np.concatenate([np.append(np.arange(st, st + len(v)), 0xFFFF) for st, v in zip(starts, hair_v)]).astype(np.uint16)
+        assert len(hair) < 0xFFFF
+    else:
+        hair, hair_i = rec(np.zeros((0, 3)), np.zeros((0, 3)), L_HAIR, np.zeros(0)), np.zeros(0, np.uint16)
 
     tri_v = np.concatenate([P(face_v), P(gp)])
     tri_i = np.concatenate([face_f, head_tris + len(face_v)]).astype(np.uint16).ravel()
@@ -449,7 +460,7 @@ def main():
     blob += b'\0' * (o_hair - len(blob)) + hair.tobytes() + hair_i.tobytes()
     with open(os.path.join(args.out, 'face.bin'), 'wb') as fh:
         fh.write(blob)
-    allp = P(np.concatenate([p_face, p_head] + hair_v))
+    allp = P(np.concatenate([p_face, p_head] + list(hair_v)))
     chin = float(P(face_v[152])[0, 1])
     meta = dict(
         posScale=q,
@@ -457,13 +468,14 @@ def main():
         lines=dict(offset=int(pts.nbytes), count=int(len(lines)), stride=12),
         tris=dict(offset=int(pts.nbytes + lines.nbytes), vertices=int(len(tv)), stride=8,
                   indexOffset=int(pts.nbytes + lines.nbytes + tv.nbytes), indices=int(len(tri_i))),
-        hair=dict(offset=int(o_hair), vertices=int(len(hair)), stride=12,
-                  indexOffset=int(o_hair + hair.nbytes), indices=int(len(hair_i))),
         iris=dict(radius=float(rad * scale)),
         kinds=dict(skin=K_SKIN, hair=K_HAIR, neck=K_NECK, iris=K_IRIS, contour=K_CONTOUR, node=K_NODE, key=K_KEY, tip=K_TIP),
         frame=dict(x=float(np.abs(allp[allp[:, 1] > chin, 0]).max().round(3)), top=float(allp[:, 1].max().round(3)),
                    chin=round(chin, 3)),
     )
+    if hair_v:
+        meta['hair'] = dict(offset=int(o_hair), vertices=int(len(hair)), stride=12,
+                            indexOffset=int(o_hair + hair.nbytes), indices=int(len(hair_i)))
     with open(os.path.join(args.out, 'face.json'), 'w') as fh:
         json.dump(meta, fh, indent=1)
     print('points', len(pts), 'line vertices', len(lines), 'tri vertices', len(tv), 'indices', len(tri_i),
