@@ -285,6 +285,13 @@ export async function createFace(canvas, { reduced = false } = {}) {
   }
   const pointVao = vaoFor(meta.points);
   const lineVao = vaoFor(meta.lines);
+  // hair: line strips over an index buffer; 0xFFFF restarts the strip (always on in WebGL2)
+  let hairVao = null;
+  if (meta.hair) {
+    hairVao = vaoFor({ offset: meta.hair.offset, count: meta.hair.vertices, stride: meta.hair.stride });
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(bin, meta.hair.indexOffset, meta.hair.indices), gl.STATIC_DRAW);
+  }
   const triVao = gl.createVertexArray();
   gl.bindVertexArray(triVao);
   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
@@ -432,6 +439,10 @@ export async function createFace(canvas, { reduced = false } = {}) {
     gl.uniform1f(Ln.u.uTime, te);
     gl.bindVertexArray(lineVao);
     gl.drawArrays(gl.LINES, 0, meta.lines.count);
+    if (hairVao) {
+      gl.bindVertexArray(hairVao);
+      gl.drawElements(gl.LINE_STRIP, meta.hair.indices, gl.UNSIGNED_SHORT, 0);
+    }
 
     gl.useProgram(P.p);
     gl.uniform1f(P.u.uTime, te);

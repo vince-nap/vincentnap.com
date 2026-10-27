@@ -15,7 +15,7 @@
    Tabs are hash links (#cv, #projects, #history, #contact), so a link on a
    CV or LinkedIn can open one directly.
    ========================================================================== */
-import { createFace, ASSEMBLED_AT, FINISHED_AT } from './face.js?v=0b09a6f960';
+import { createFace, ASSEMBLED_AT, FINISHED_AT } from './face.js?v=27756c5e1c';
 
 const root = document.documentElement;
 root.classList.remove('no-js');
@@ -86,13 +86,16 @@ function layoutFace() {
   const open = body.classList.contains('open');
   if (!open) { face.layout(0, narrow.matches ? 0.06 : 0, 1); return; }
   if (narrow.matches) { face.layout(0, 0.35, 0.55); return; }
-  // the panel takes the middle; the face steps aside to the right
+  // the panel takes the stage; the face steps right and waits behind its glass,
+  // or, on screens wide enough to leave room next to the panel, beside it
   const rect = panel.getBoundingClientRect();
   const free = window.innerWidth - rect.right;
-  const cx = rect.right + free / 2;
-  const nx = (cx / window.innerWidth) * 2 - 1;
-  const scale = Math.max(0.42, Math.min(0.62, free / window.innerWidth * 2.1));
-  face.layout(nx, -0.04, scale);
+  if (free > 320) {
+    const nx = ((rect.right + free / 2) / window.innerWidth) * 2 - 1;
+    face.layout(nx, -0.04, Math.max(0.42, Math.min(0.62, free / window.innerWidth * 2.1)));
+  } else {
+    face.layout(0.55, -0.04, 0.62);
+  }
 }
 
 function show(id) {
