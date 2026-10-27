@@ -5,8 +5,8 @@ fine clusters along the features and occluder triangles for hidden dots (the pho
 tracking points with leader lines). `site/assets/js/face.js` draws whichever was built last.
 
 **`build_generic.py` — what the site uses.** A neutral head that is nobody in particular: MediaPipe's
-canonical face model (an average face), reshaped in `masculine()` (square jaw and broad chin,
-cheekbones with hollows under them, a slight bump on the nose, thinner lips), with a cranium, jaw,
+canonical face model (an average face), reshaped in `masculine()` (a leaner jaw, a longer
+chin, cheekbones with hollows under them, a slight bump on the nose, thinner lips), with a cranium, jaw,
 ears and neck made of simple solids around it, and a sculpted hairstyle fitted onto the cranium. Face and hair are the same stipple: no lines.
 The hair's dots are scattered along streamlines that run down the sculpt's surface, so the locks
 still show. Builds in about half a minute.

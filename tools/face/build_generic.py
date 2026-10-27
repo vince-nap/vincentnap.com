@@ -34,9 +34,10 @@ from build_face import (HERE, ROOT, K_SKIN, K_NECK, K_IRIS, K_CONTOUR, K_NODE, K
 
 # the solids, in the canonical model's centimetres (x right, y up, z towards the viewer)
 CRANIUM = dict(c=(0.0, 3.0, -4.25), r=(7.9, 10.6, 9.75), n=2.2)
-# boxy, for the square jaw, and fitted just inside the face's jaw edge seen from the front
-# (a solid that reaches past it shows as a second jawline)
-JAW = dict(c=(0.0, -4.2, -3.0), r=(7.06, 5.3, 6.4), n=2.6)
+# fitted just inside the face's jaw edge seen from the front, and ending above the chin:
+# a solid that reaches past the face edge shows as a second jawline. Tall, so that its
+# sides follow the jaw tapering to the chin (above the jaw it is inside the cranium).
+JAW = dict(c=(0.0, -0.4, -3.0), r=(7.02, 9.0, 6.4), n=1.9)
 EARS = [dict(c=(s * 7.75, 0.3, -3.7), r=(0.95, 3.0, 1.9), n=2.0) for s in (-1, 1)]
 NECK = dict(cx=0.0, cz=-3.6, rx=5.3, rz=5.7, y0=-19.0, y1=0.0)
 
@@ -79,35 +80,33 @@ def exit_neck(o, d):
 
 
 def masculine(v, fn):
-    """Reshapes MediaPipe's average face into a more masculine one: a square jaw with a
-    marked angle and a broader, flatter chin, cheekbones that stand out with hollows
-    under them, a slight bump on the bridge of the nose and thinner lips.
+    """Reshapes MediaPipe's average face: a leaner lower face (the jaw corners drawn in
+    and down, the chin longer and a little forward), cheekbones brought forward with
+    hollows under them, a slight bump on the bridge of the nose and thinner lips.
 
-    Landmarks are given a displacement in cm, x counted outwards from the middle
-    (mirrored to the other side), and landmarks that must stay put are anchored; a Gaussian radial basis function
+    Landmarks are given a displacement in cm, for the landmark on the -x side (so a
+    positive x moves it inwards; the other side is mirrored), and landmarks that must
+    stay put are anchored; a Gaussian radial basis function
     through all of them moves the rest of the mesh smoothly. The lips are then
     pressed together towards the line of the mouth."""
     mirror = lambda i: int(np.argmin(((v - v[i] * [-1, 1, 1]) ** 2).sum(1)))
     ctrl = {}
 
-    def move(i, d, outwards=True):
-        d = np.array(d, float)
-        if outwards and v[i, 0] < 0:                                   # x counts outwards on either side
-            d = d * [-1, 1, 1]
-        ctrl[i] = d
+    def move(i, d):
+        ctrl[i] = np.array(d, float)
         if abs(v[i, 0]) > 0.05:
-            ctrl[mirror(i)] = d * [-1, 1, 1]
+            ctrl[mirror(i)] = np.array(d, float) * [-1, 1, 1]
 
-    # the jaw: the angle out and down, the bottom of the face flattened into a broad chin
+    # the jaw: the corners in and down, the chin longer and forward
     for i, d in [(132, (0.15, 0, 0)), (58, (0.5, -0.2, 0)), (172, (1.0, -0.5, 0)), (136, (0.95, -0.7, 0.05)),
                  (150, (0.9, -0.8, 0.1)), (149, (0.7, -0.65, 0.15)), (176, (0.45, -0.42, 0.2)),
                  (148, (0.25, -0.2, 0.22)), (152, (0, -0.14, 0.22))]:
         move(i, d)
-    # cheekbones out and forward, the cheeks under them pulled in
+    # cheekbones forward (and a little in), the cheeks under them pulled in
     for i, d in [(116, (0.3, 0.05, 0.3)), (123, (0.35, 0.0, 0.3)), (117, (0.15, 0.05, 0.25))]:
         move(i, d)
     for i, depth in [(187, 0.45), (207, 0.3), (192, 0.35), (213, 0.3), (147, 0.2), (214, 0.15)]:
-        move(i, -depth * fn[i], outwards=False)                       # into the face, along its normal
+        move(i, -depth * fn[i])
     # a bump on the bridge of the nose, a third of the way down, and a small dip after it
     for i, dz in [(6, 0.04), (197, 0.2), (195, 0.25), (5, -0.03)]:
         move(i, (0, 0, dz))
