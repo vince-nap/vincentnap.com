@@ -74,7 +74,7 @@
       <span class="pane-nr">01</span>
       <h2 id="h-cv">Curriculum Vitae</h2>
       <p class="pane-sub">Vincent Hugo Reinout Nap — Amsterdam, NL</p>
-      <button class="knop knop-klein" type="button" data-print>Print / save as PDF</button>
+      <a class="knop knop-klein" href="/assets/cv/CV_Vincent_Nap.pdf" download="CV Vincent Nap.pdf">Download CV (PDF)</a>
     </header>
 
     <h3 class="blok">Experience</h3>
@@ -87,7 +87,7 @@
           <ul>
             <li>Assisting the Head of Legal on legal and compliance matters.</li>
             <li>Assisting the CFO with reporting and valuation.</li>
-            <li>Supporting the office in the development and integration of AI.</li>
+            <li>Supporting the office in the development and integration of AI, including building Argus: an application that reviews KYC and CDD dossiers automatically (in development).</li>
           </ul>
         </div>
       </li>
@@ -227,28 +227,40 @@
       <p class="pane-sub">Things I have built, started or sold</p>
     </header>
     <div class="projecten">
-      <article class="project">
+      <article class="project project-hoofd">
         <span class="project-nr">01</span>
         <div class="project-kop">
+          <h3>Verhaal</h3>
+          <span class="status status-geel">In development</span>
+          <span class="hoofd-label">Main project</span>
+        </div>
+        <p class="project-meta">2026 · Consumer claims recovery · The Netherlands</p>
+        <p>A platform that helps consumers recover what companies owe them, from the notice of default to the payment. A deterministic workflow engine owns the state, the statutory deadlines and the money; AI drafts the letters and answers the company at fixed points in the process, and a human reviews what leaves. Behind it: a consumer app, an admin cockpit with a review queue, and a go-live checklist that is as much legal as technical.</p>
+        <ul class="tags"><li>Workflow engine</li><li>Node.js</li><li>PostgreSQL</li><li>Claude API</li><li>Consumer law</li></ul>
+      </article>
+      <article class="project">
+        <span class="project-nr">02</span>
+        <div class="project-kop">
           <h3>Argus</h3>
-          <span class="status status-blauw">Internal tool</span>
+          <span class="status status-geel">In development</span>
         </div>
         <p class="project-meta">2026 · Compliance automation · Bencis Capital Partners</p>
         <p>A desktop application that reviews KYC and CDD dossiers automatically: it reads the files, checks them against the rules and drafts the review. Privacy is enforced in code, not by agreement — identity documents are classified by file name only, and personal data is redacted before anything leaves the machine.</p>
         <ul class="tags"><li>Electron</li><li>Node.js</li><li>OCR</li><li>AI review</li></ul>
       </article>
       <article class="project">
-        <span class="project-nr">02</span>
+        <span class="project-nr">03</span>
         <div class="project-kop">
-          <h3>Verhaal</h3>
-          <span class="status status-geel">In development</span>
+          <h3>Claude Dash</h3>
+          <span class="status status-blauw">Open source</span>
         </div>
-        <p class="project-meta">2026 · Consumer claims recovery</p>
-        <p>A platform that takes consumer claims from complaint to settlement. A deterministic workflow engine owns the state, the statutory deadlines and the money; AI only drafts at fixed points in the process, and a human reviews what leaves.</p>
-        <ul class="tags"><li>Workflow engine</li><li>Node.js</li><li>PostgreSQL</li><li>Claude API</li></ul>
+        <p class="project-meta">2026 · Developer tool · MIT licence</p>
+        <p>A usage meter and task planner for Claude Code: how much of the session and weekly limit is used, how fast it burns, whether the limit will be hit before it resets — and what a task will cost before it starts, learning from what tasks really cost. One Node script and one dashboard page, no dependencies.</p>
+        <ul class="tags"><li>Node.js</li><li>CLI</li><li>Dashboard</li></ul>
+        <a class="project-link" href="https://github.com/vince-nap/claude-dash" rel="noopener" target="_blank">github.com/vince-nap/claude-dash</a>
       </article>
       <article class="project">
-        <span class="project-nr">03</span>
+        <span class="project-nr">04</span>
         <div class="project-kop">
           <h3>Rechtspraat</h3>
           <span class="status status-grijs">Acquired</span>
@@ -256,16 +268,6 @@
         <p class="project-meta">2023 – 2025 · Podcast</p>
         <p>A podcast explaining Dutch and European case law in plain language. Grew it into an advertising partnership with study-aid provider Lawbooks, then negotiated its sale at 8.2× EBITDA.</p>
         <ul class="tags"><li>Media</li><li>Partnerships</li><li>M&amp;A</li></ul>
-      </article>
-      <article class="project">
-        <span class="project-nr">04</span>
-        <div class="project-kop">
-          <h3>vincentnap.com</h3>
-          <span class="status status-blauw">Live</span>
-        </div>
-        <p class="project-meta">2026 · This site</p>
-        <p>The head on the front page is a wireframe and some 14,000 dots, reconstructed in 3D from three phone photos: a face mesh and hair segmentation from MediaPipe, the rest of the head inflated from the silhouettes, everything made symmetric — then drawn in WebGL without libraries.</p>
-        <ul class="tags"><li>WebGL</li><li>MediaPipe</li><li>Python</li></ul>
       </article>
     </div>
   </section>

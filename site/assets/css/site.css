@@ -346,6 +346,14 @@ body.open #paneel { opacity: 1; visibility: visible; transform: none; transition
 .project h3 { font: 400 18px/1.2 var(--f-kop); letter-spacing: .2em; text-transform: uppercase; }
 .project-meta { margin: 8px 0 12px; font: 400 10.5px/1.4 var(--f-kop); letter-spacing: .18em; text-transform: uppercase; color: var(--ink-faint); }
 .project p:not(.project-meta) { font-size: 15.5px; line-height: 1.6; }
+/* The main project spans the full width, with a stronger frame. */
+.project-hoofd { grid-column: 1 / -1; border-color: var(--line-strong); background: linear-gradient(135deg, rgba(29, 111, 224, .06), rgba(255, 255, 255, .85) 55%); }
+.project-hoofd::before, .project-hoofd::after { width: 22px; height: 22px; opacity: 1; }
+.project-hoofd h3 { font-size: 22px; }
+.hoofd-label { margin-left: auto; padding: 4px 9px; font: 500 9.5px/1 var(--f-kop); letter-spacing: .22em; text-transform: uppercase; color: #fff; background: var(--ink-sterk); }
+.project-link { display: inline-block; margin-top: 14px; font: 500 11px/1.2 var(--f-kop); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); border-bottom: 1px solid rgba(29, 111, 224, .3); }
+.project-link::after { content: " ↗"; }
+.project-link:hover { border-bottom-color: var(--accent); }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
 .tags li { padding: 4px 8px; border: 1px solid var(--line); font: 400 10px/1.2 var(--f-kop); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-soft); }
 .status { display: inline-flex; align-items: center; gap: 7px; font: 500 10px/1 var(--f-kop); letter-spacing: .18em; text-transform: uppercase; color: var(--ink-soft); }
@@ -455,7 +463,7 @@ body.geen-gl #readout { display: none; }
 @media print {
   @page { margin: 16mm 16mm; }
   body { overflow: visible; background: #fff; font-size: 10.5pt; }
-  #decor, #face, #lock, #readout, #klok, #menu, #voet, .sluit, .pane-nr, [data-print] { display: none !important; }
+  #decor, #face, #lock, #readout, #klok, #menu, #voet, .sluit, .pane-nr, .pane-kop .knop { display: none !important; }
   #paneel { position: static; width: auto; padding: 0; border: 0; box-shadow: none; opacity: 1; visibility: visible; transform: none; overflow: visible; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
   #paneel::before, #paneel::after { display: none; }
   .pane { display: none !important; }

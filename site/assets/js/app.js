@@ -150,7 +150,6 @@ function wireContact() {
     }
     setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('gelukt'); }, 1800);
   });
-  document.querySelectorAll('[data-print]').forEach((b) => b.addEventListener('click', () => window.print()));
 }
 
 /* ---------- the frame and readout follow the face ---------- */
@@ -193,8 +192,15 @@ async function main() {
   followFace();
   layoutFace();
   face.start();
-  const freeze = new URLSearchParams(location.search).get('freeze');
-  if (freeze !== null) { face.freeze(parseFloat(freeze) || 0); allPhases(); return; }
+  // debugging: ?freeze=2.5 holds the opening at 2.5 s, &look=0.8,0.2 turns the head
+  const params = new URLSearchParams(location.search);
+  if (params.has('freeze')) {
+    face.freeze(parseFloat(params.get('freeze')) || 0);
+    allPhases();
+    const look = (params.get('look') || '').split(',').map(Number);
+    if (look.length === 2 && look.every(Number.isFinite)) face.look(look[0], look[1]);
+    return;
+  }
 
   if (reduced) {
     face.skip();

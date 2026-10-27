@@ -58,7 +58,7 @@ BG, HAIR, BODY, FACE, CLOTHES, OTHER = range(6)
 # Dot kinds, mirrored in site/assets/js/face.js
 K_SKIN, K_HAIR, K_NECK, K_IRIS, K_CONTOUR, K_NODE, K_KEY, K_TIP = range(8)
 # Line kinds
-L_FACE, L_HEAD, L_LEADER = 0, 1, 2
+L_FACE, L_HEAD, L_LEADER, L_HAIR = 0, 1, 2, 3
 
 H = 6.0  # grid step of the height fields, in front-photo pixels
 
@@ -263,19 +263,46 @@ def main():
     y_cut = -900.0                                                   # below the throat: the collar
     dom &= (yy >= y_cut)
 
-    # A squarer jaw. MediaPipe's jaw contour runs in an almost straight V from the
-    # ears to a narrow chin; on dots that reads as an oval with no jawline. The
-    # jaw angle is widened by ~8%, the lower jaw and chin by ~10-12%, and the
-    # vertices around them follow with a smooth falloff into the cheeks.
-    jaw_widen = {132: 1.015, 58: 1.04, 172: 1.08, 136: 1.10, 150: 1.10, 149: 1.10, 176: 1.11, 148: 1.12}
-    ctrl, delta = [], []
-    for i, f in jaw_widen.items():
-        for j in (i, twin[i]):
-            ctrl.append(a_face[j].copy())
-            delta.append([a_face[j, 0] * (f - 1), 0.0, 0.0])
-    ctrl, delta = np.array(ctrl), np.array(delta)
-    g = np.exp(-((a_face[:, None, :] - ctrl[None]) ** 2).sum(-1) / (2 * 55.0 ** 2))
-    a_face = a_face + (g[:, :, None] * delta[None]).sum(1) / np.maximum(1.0, g.sum(1))[:, None]
+    # A more defined, more masculine face than the average MediaPipe fits. Each
+    # change moves a few landmarks (and their mirror twins); the vertices around
+    # them follow with a Gaussian falloff, so the mesh stays smooth.
+    def deform(moves, sigma):
+        """moves: {landmark: (dx, dy, dz)} for the left half (x < 0); mirrored to the right."""
+        ctrl, delta = [], []
+        for i, (dx, dy, dz) in moves.items():
+            for j in {i, twin[i]}:
+                ctrl.append(a_face[j].copy())
+                delta.append([dx * (1 if a_face[j, 0] <= 0 else -1), dy, dz])
+        ctrl, delta = np.array(ctrl), np.array(delta)
+        g = np.exp(-((a_face[:, None, :] - ctrl[None]) ** 2).sum(-1) / (2 * sigma ** 2))
+        return a_face + (g[:, :, None] * delta[None]).sum(1) / np.maximum(1.0, g.sum(1))[:, None]
+
+    # the jaw: MediaPipe draws an almost straight V from the ears to a narrow chin;
+    # the jaw angle is widened ~12%, the lower jaw ~14%, the chin ~16%
+    widen = {132: 1.02, 58: 1.06, 172: 1.12, 136: 1.14, 150: 1.14, 149: 1.14, 176: 1.15, 148: 1.16}
+    a_face = deform({i: (a_face[i, 0] * (f - 1), 0.0, 0.0) for i, f in widen.items()}, 55.0)
+    # the chin: a little forward and flatter underneath
+    a_face = deform({152: (0, -8, 10), 148: (0, -8, 10), 175: (0, -4, 10), 199: (0, 0, 8), 176: (0, -4, 6)}, 50.0)
+    # cheekbones forward and out, the cheek below them hollowed
+    a_face = deform({116: (-9, 0, 10), 123: (-9, 0, 10), 117: (-6, 0, 10), 111: (-6, 0, 8), 50: (-4, 0, 6)}, 45.0)
+    a_face = deform({187: (0, 0, -14), 147: (0, 0, -12), 213: (0, 0, -12), 192: (0, 0, -10)}, 42.0)
+    # a heavier brow ridge
+    brow_lo = [46, 53, 52, 65, 55]          # lower edge of the right brow, outer to inner
+    brow_hi = [70, 63, 105, 66, 107]        # upper edge
+    a_face = deform({i: (0, 0, 10) for i in brow_lo + brow_hi}, 40.0)
+    # straighter, lower, thicker eyebrows: the arch flattened by 45%, the brow 8 px lower,
+    # its upper edge 4 px higher than that
+    moves = {}
+    for seq, extra in ((brow_lo, 0.0), (brow_hi, 4.0)):
+        y0_, y1_ = a_face[seq[0], 1], a_face[seq[-1], 1]
+        for k, i in enumerate(seq):
+            line = y0_ + (y1_ - y0_) * k / (len(seq) - 1)
+            moves[i] = (0.0, -0.45 * (a_face[i, 1] - line) - 8.0 + extra, 0.0)
+    a_face = deform(moves, 22.0)
+    # the bump on the bridge of the nose, where bone meets cartilage
+    bump = 11.0 * np.exp(-((a_face[:, 1] - 85.0) ** 2) / (2 * 28.0 ** 2)) * np.exp(-(a_face[:, 0] ** 2) / (2 * 30.0 ** 2))
+    a_face[:, 2] += bump * (a_face[:, 2] > 250)
+    a_face[twin == np.arange(468), 0] = 0.0
     left = [132, 58, 172, 136, 150, 149, 176, 148]
     jaw_ids = left + [152] + [twin[i] for i in left[::-1]]
 
@@ -568,6 +595,167 @@ def main():
     shade = np.clip(1 - below / 95.0, 0, 1) ** 1.6 * (below > -4) * (np.abs(p_head[:, 0]) < jx.max() + 10) * (n_head[:, 2] > -0.3)
     head_tone = np.where(head_kind != K_HAIR, np.maximum(head_tone, 0.2 + 0.55 * shade), head_tone)
 
+    # the hollows under the cheekbones, a little darker
+    hollow = a_face[[187, 147, 213, 192, twin[187], twin[147], twin[213], twin[192]]]
+    w_h = np.exp(-((p_face[:, None, :] - hollow[None]) ** 2).sum(-1) / (2 * 45.0 ** 2)).sum(1)
+    face_tone = np.where(face_kind == K_SKIN, np.maximum(face_tone, 0.14 + 0.42 * np.clip(w_h, 0, 1)), face_tone)
+
+    # 7a. the hair: strands grown from the centre parting over the outer surface of
+    # the head, combed by gravity: sideways near the top, downwards over the sides,
+    # back behind the ears. A strand stops where the photos stop showing hair; the
+    # ones that end falling get a flick outwards. Waves are added afterwards, shared
+    # per lock of strands and growing towards the tips.
+    def hair_prob(p, n, through_ears=False):
+        wf = np.clip((n[:, 2] + 0.3) / 0.7, 0, 1)
+        front = 0.5 * (front_sample(conf_f[HAIR], p) + front_sample(conf_f[HAIR], p * mirror_x))
+        acc = np.zeros(len(p))
+        ws = np.zeros(len(p))
+        for pr in prof.values():
+            w = (n[:, 0] * pr['xsign'] > -0.15).astype(float)
+            acc += w * bilinear(pr['conf'][HAIR], *side_uv(pr, p))
+            ws += w
+        side_p = np.where(ws > 0, acc / np.maximum(ws, 1e-6), front)
+        if through_ears:
+            # the hair runs behind the ears: the ears themselves don't stop a strand
+            ear_box = (np.abs(p[:, 0]) > 280) & (p[:, 1] > -190) & (p[:, 1] < 160) & (p[:, 2] > -290) & (p[:, 2] < -20)
+            side_p = np.where(ear_box, 1.0, side_p)
+            # and the curtains may come lower over the forehead than in the photo:
+            # down to ~70 px above the brows at the temples, rising to the parting
+            front = np.where(p[:, 1] > hairline_y(p[:, 0]), np.maximum(front, 0.6), front)
+        return wf * front + (1 - wf) * side_p
+
+    brow_top = a_face[brow_hi, 1].max()
+
+    def hairline_y(x):
+        return brow_top + 70 + 150 * (1 - np.clip(np.abs(x) / 300.0, 0, 1)) ** 1.5
+
+    def to_surface(p):
+        y = np.maximum(p[:, 1], y_cut + 12)
+        axis_o = np.stack([np.zeros(len(p)), y, np.interp(y, ys, z_c)], 1)
+        orig = np.where((y > y0)[:, None], c0[None], axis_o)
+        d = p - orig
+        d /= np.linalg.norm(d, axis=1, keepdims=True) + 1e-9
+        lo = np.zeros(len(p))
+        hi = np.full(len(p), 1500.0)
+        for _ in range(22):
+            mid = 0.5 * (lo + hi)
+            ins = inside(orig + d * mid[:, None])
+            lo = np.where(ins, mid, lo)
+            hi = np.where(ins, hi, mid)
+        return orig + d * lo[:, None], d
+
+    flick_below = a_face[13, 1]                                       # the mouth
+
+    def grow(roots, sides, steps, step=18.0):
+        n = len(roots)
+        pos, nrm = to_surface(roots)
+        path = [pos.copy()]
+        alive = np.ones(n, bool)
+        miss = np.zeros(n, int)
+        count = np.ones(n, int)
+        last = np.zeros((n, 3))
+        for k in range(steps):
+            # sideways over the top and across the forehead (the curtains), then
+            # falling once the strand is round the side or the back of the head
+            sideness = np.clip(np.abs(nrm[:, 0]) + 0.6 * np.maximum(-nrm[:, 2], 0), 0, 1)
+            w_down = np.clip(0.25 + 0.85 * np.clip((sideness - 0.35) / 0.5, 0, 1), 0, 1) * (1 - 0.6 * np.maximum(nrm[:, 1], 0))
+            d = np.stack([(1 - w_down) * sides, -w_down, np.zeros(n)], 1)
+            ear = (np.abs(pos[:, 0]) > 240) * np.exp(-((pos[:, 1] - 10.0) / 190.0) ** 2) * np.clip((pos[:, 2] + 330.0) / 200.0, 0, 1)
+            d[:, 2] -= 0.95 * ear
+            d -= (d * nrm).sum(1, keepdims=True) * nrm
+            d /= np.linalg.norm(d, axis=1, keepdims=True) + 1e-9
+            if k:
+                d = 0.6 * d + 0.4 * last
+                d /= np.linalg.norm(d, axis=1, keepdims=True) + 1e-9
+            new, nn = to_surface(pos + d * step)
+            miss = np.where(hair_prob(new, nn, through_ears=True) > 0.35, 0, miss + 1)
+            alive &= (miss < 2) & (new[:, 1] > y_cut + 60)
+            pos = np.where(alive[:, None], new, pos)
+            nrm = np.where(alive[:, None], nn, nrm)
+            last = np.where(alive[:, None], d, last)
+            count += alive
+            path.append(pos.copy())
+            if not alive.any():
+                break
+        path = np.stack(path, 1)
+        out = []
+        for i in range(n):
+            pts = path[i, :count[i]]
+            if len(pts) < 4:
+                continue
+            if last[i, 1] < -0.4 and pts[-1, 1] < flick_below:      # ends at the jaw or the collar: flick out
+                _, on = to_surface(pts[-1:])
+                for kk in range(1, 4):
+                    dd = last[i] + on[0] * 0.5 * kk + np.array([0, 0.22 * kk, 0])
+                    pts = np.vstack([pts, pts[-1] + dd / np.linalg.norm(dd) * step * 0.9])
+            out.append(pts)
+        return out
+
+    hr = np.random.default_rng(11)
+    strands, locks = [], []
+    # from the parting: front hairline over the top to the crown, two strands per
+    # side per root, a lock every two roots
+    roots, sides, lock_ids = [], [], []
+    for idx, phi in enumerate(np.radians(np.arange(-56, 40, 1.8))):
+        d = np.array([[0.0, np.cos(phi), -np.sin(phi)]])
+        rp, rn = cast(c0[None], d), d
+        if rp[0, 1] < hairline_y(np.zeros(1))[0] - 4 or (rp[0, 2] < 0 and hair_prob(rp, rn)[0] < 0.45):
+            continue
+        for side in (-1, 1):
+            for j in range(2):
+                off = np.array([side * (5 + 11 * j + hr.normal(0, 2)), hr.normal(0, 4), 0])
+                roots.append(rp[0] + off); sides.append(side); lock_ids.append(('p', side, idx // 2))
+    for pts, lk in zip(grow(np.array(roots), np.array(sides, float), 64), lock_ids):
+        strands.append(pts); locks.append(lk)
+    # fill: shorter strands rooted all over the hair, for coverage lower down
+    hair_head = p_head[(head_kind == K_HAIR) & ~((np.abs(p_head[:, 0]) < 90) & (n_head[:, 1] > 0.7))]
+    fill = hair_head[poisson_disk(hair_head, 66.0, 12)]
+    f_sides = np.where(np.abs(fill[:, 0]) < 8, hr.choice([-1.0, 1.0], len(fill)), np.sign(fill[:, 0]))
+    for pts, r0 in zip(grow(fill, f_sides, 24), fill):
+        strands.append(pts); locks.append(('f',) + tuple(np.round(r0 / 80).astype(int)))
+    # waves, per lock
+    lock_wave = {}
+    hair_v, hair_n, hair_t = [], [], []
+    for pts, lk in zip(strands, locks):
+        if lk not in lock_wave:
+            lock_wave[lk] = (hr.uniform(0, 2 * np.pi), hr.uniform(130, 170), hr.uniform(0, 2 * np.pi))
+        ph, lam, ph2 = lock_wave[lk]
+        ph += hr.normal(0, 0.35)
+        seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+        sl = np.concatenate([[0], np.cumsum(seg)])
+        tan = np.gradient(pts, axis=0)
+        tan /= np.linalg.norm(tan, axis=1, keepdims=True) + 1e-9
+        _, nrm = to_surface(pts)
+        b = np.cross(nrm, tan)
+        b /= np.linalg.norm(b, axis=1, keepdims=True) + 1e-9
+        amp = 3.0 + 13.0 * np.clip(sl / 420.0, 0, 1) ** 1.3
+        lift = hr.uniform(2, 14) + 2.5 * np.sin(np.pi * sl / lam + ph2)
+        w = pts + b * (amp * np.sin(2 * np.pi * sl / lam + ph))[:, None] + nrm * lift[:, None]
+        hair_v.append(w); hair_n.append(nrm); hair_t.append(sl / max(sl[-1], 1.0))
+    print('hair strands', len(hair_v), 'segments', sum(len(v) - 1 for v in hair_v))
+
+    # dots along the strands, toned by the hair in the photos (light streaks stay light)
+    hv = np.concatenate([v[::3] for v in hair_v])
+    hn_ = np.concatenate([n[::3] for n in hair_n])
+    wf = np.clip((hn_[:, 2] + 0.3) / 0.7, 0, 1)
+    lum_h = wf * front_sample(tex_hair_f, hv)
+    acc = np.zeros(len(hv)); ws = np.zeros(len(hv))
+    for pr in prof.values():
+        w = (hn_[:, 0] * pr['xsign'] > -0.15).astype(float)
+        acc += w * bilinear(cv2.GaussianBlur(pr['gray'], (0, 0), 1.5), *side_uv(pr, hv)); ws += w
+    lum_h += (1 - wf) * np.where(ws > 0, acc / np.maximum(ws, 1e-6), lum_h)
+    hair_dot_tone = 0.4 + 0.6 * tone_from(lum_h, hair_ref, 0.55)
+    # the strands replace the scattered hair dots and the grid over the hair
+    face_keep = face_kind != K_HAIR
+    p_face, n_face, face_kind, face_tone = p_face[face_keep], n_face[face_keep], face_kind[face_keep], face_tone[face_keep]
+    head_keep = head_kind != K_HAIR
+    p_head, n_head, head_kind, head_tone = p_head[head_keep], n_head[head_keep], head_kind[head_keep], head_tone[head_keep]
+    grid_hair = hair_prob(gp, gn) > 0.5
+    head_edges = head_edges[~grid_hair[head_edges].all(1)]
+    # no grid across the bare forehead either: a ring there reads as a headband
+    forehead = (gn[:, 2] > 0.3) & (gp[:, 1] > a_face[10, 1] - 40)
+    head_edges = head_edges[~forehead[head_edges].any(1)]
+
     # 7. bright clusters along the features: lids, brows, nose, lips, face outline
     def contour_dots(conns, spacing, tone, jitter, seed, keep=None):
         r = np.random.default_rng(seed)
@@ -593,9 +781,8 @@ def main():
     nose_bridge = lambda a, b: abs(a[0]) < 1 and abs(b[0]) < 1
     groups = [
         (FLC.FACE_LANDMARKS_LEFT_EYE, 3.2, 1.0, 1.4, None), (FLC.FACE_LANDMARKS_RIGHT_EYE, 3.2, 1.0, 1.4, None),
-        (FLC.FACE_LANDMARKS_LEFT_EYEBROW, 5.0, 0.8, 4.0, None), (FLC.FACE_LANDMARKS_RIGHT_EYEBROW, 5.0, 0.8, 4.0, None),
         (FLC.FACE_LANDMARKS_LIPS, 3.6, 0.95, 1.6, None),
-        (FLC.FACE_LANDMARKS_NOSE, 4.0, 0.9, 1.6, nose_low), (FLC.FACE_LANDMARKS_NOSE, 7.0, 0.5, 1.2, nose_bridge),
+        (FLC.FACE_LANDMARKS_NOSE, 4.0, 0.9, 1.6, nose_low), (FLC.FACE_LANDMARKS_NOSE, 5.0, 0.75, 1.0, nose_bridge),
     ]
     c_pts, c_nrm, c_tone = [], [], []
     for k, (conns, sp, tn, jit, keep_fn) in enumerate(groups):
@@ -603,6 +790,32 @@ def main():
         c_pts.append(p); c_nrm.append(n); c_tone.append(t)
     p, n, t = contour_dots(FLC.FACE_LANDMARKS_FACE_OVAL, 4.0, 0.9, 1.5, 30, keep=jaw_keep)
     c_pts.append(p); c_nrm.append(n); c_tone.append(t)
+    # a soft line under each cheekbone, from in front of the ear towards the mouth
+    cr = np.random.default_rng(41)
+    for ids in ([137, 147, 187, 207, 216], [twin[i] for i in (137, 147, 187, 207, 216)]):
+        line = a_face[ids]
+        for a_, b_ in zip(line[:-1], line[1:]):
+            m = max(1, int(np.linalg.norm(b_ - a_) / 6.0))
+            t = (np.arange(m) + cr.random(m)) / m
+            seg = a_[None] + (b_ - a_)[None] * t[:, None] + cr.normal(0, 2.5, (m, 3)) * np.array([1, 1, 0.3])
+            c_pts.append(seg + np.array([0, 0, 3.0])); c_nrm.append(np.tile([0.0, 0.0, 1.0], (m, 1))); c_tone.append(np.full(m, 0.5))
+
+    # the eyebrows as filled bands, fuller at the inner end
+    def resample(poly, n):
+        sl = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(poly, axis=0), axis=1))])
+        t = np.linspace(0, sl[-1], n)
+        return np.stack([np.interp(t, sl, poly[:, k]) for k in range(3)], 1)
+    br = np.random.default_rng(31)
+    for lo_ids, hi_ids in ((brow_lo, brow_hi), ([twin[i] for i in brow_lo], [twin[i] for i in brow_hi])):
+        lo_p, hi_p = resample(a_face[lo_ids], 64), resample(a_face[hi_ids], 64)
+        nb = fn0[lo_ids].mean(0)
+        nb /= np.linalg.norm(nb)
+        for i in range(64):
+            fuller = 0.55 + 0.45 * i / 63
+            for sv in np.linspace(0, 1, 8):
+                m = 0.5 + (sv - 0.5) * fuller * 1.2
+                pt = lo_p[i] * (1 - m) + hi_p[i] * m + nb * 3.5 + br.normal(0, 1.5, 3) * np.array([1, 1, 0.3])
+                c_pts.append(pt[None]); c_nrm.append(nb[None]); c_tone.append(np.array([0.95]))
     c_pts, c_nrm, c_tone = np.concatenate(c_pts), np.concatenate(c_nrm), np.concatenate(c_tone)
     k = poisson_disk(c_pts, 2.6, 5)
     c_pts, c_nrm, c_tone = c_pts[k], c_nrm[k], c_tone[k]
@@ -626,7 +839,7 @@ def main():
 
     # 8. nodes: the vertices of the wireframe, and the tracking points with their leader lines
     node_face = np.setdiff1d(np.arange(468), list(eye_l | eye_r))
-    hn = np.where(~covered)[0]
+    hn = np.where(~covered & ~grid_hair)[0]
     key_ids = [33, 263, 123, 352, 172, 397, 234, 454]
     leaders = []
     for kid in key_ids:
@@ -637,34 +850,74 @@ def main():
         leaders.append((b, out, length))
 
     # 9. export ---------------------------------------------------------------
+    # Proportions: equal thirds. Chin to lips, lips to eyes and eyes to the hairline
+    # at the parting are each made 1/3 of the face, with the face 8% shorter overall.
+    # The model is warped vertically, piecewise (smoothed at the joins); normals
+    # follow the inverse of the local stretch, so the lighting stays right.
+    eye_y = cy
+    lip_y = 0.5 * (a_face[13, 1] + a_face[14, 1])
+    chin_y = a_face[152, 1]
+    top_y = float(hairline_y(np.zeros(1))[0])
+    third = 0.92 * (top_y - chin_y) / 3
+    s_a, s_b, s_c = third / (lip_y - chin_y), third / (eye_y - lip_y), third / (top_y - eye_y)
+    wy = np.arange(-1800.0, 1800.0, 2.0)
+    for _ in range(6):                                               # the soft joins shift the thirds a little:
+        w_slope = np.where(wy < lip_y, s_a, np.where(wy < eye_y, s_b, s_c))  # correct the slopes until exact
+        w_slope = ndimage.gaussian_filter1d(w_slope, 12)             # 24 px soft joins
+        w_f = np.cumsum(w_slope) * 2.0
+        w_f += eye_y - np.interp(eye_y, wy, w_f)                     # the eyes stay where they are
+        fy = lambda y: float(np.interp(y, wy, w_f))
+        s_a *= third / (fy(lip_y) - fy(chin_y))
+        s_b *= third / (fy(eye_y) - fy(lip_y))
+        s_c *= third / (fy(top_y) - fy(eye_y))
+    print('thirds before %.0f / %.0f / %.0f px, after %.0f / %.0f / %.0f px' % (
+        lip_y - chin_y, eye_y - lip_y, top_y - eye_y, fy(lip_y) - fy(chin_y), fy(eye_y) - fy(lip_y), fy(top_y) - fy(eye_y)))
+
+    def warp(p):
+        p = np.array(p, dtype=float, ndmin=2)
+        p[:, 1] = np.interp(p[:, 1], wy, w_f)
+        return p
+
+    def warp_n(n, p):
+        n = np.array(n, dtype=float, ndmin=2).copy()
+        n[:, 1] /= np.interp(np.array(p, ndmin=2)[:, 1], wy, w_slope)
+        return n / (np.linalg.norm(n, axis=1, keepdims=True) + 1e-9)
+
     origin = np.array([0.0, cy - 60.0, 0.0])
     scale = 1.0 / 560.0
-    P = lambda p: (np.asarray(p) - origin) * scale
+    P = lambda p: (warp(p) - origin) * scale
     q = 1.0 / 16384.0
 
-    def rec(pos, nrm, kind, tone):
+    def rec(raw, nrm, kind, tone, warp_normals=True):
+        raw = np.array(raw, dtype=float, ndmin=2)
+        pos = P(raw)
+        nrm = warp_n(nrm, raw) if warp_normals else np.array(nrm, dtype=float, ndmin=2)
         r = np.zeros(len(pos), dtype=[('p', '<i2', 3), ('n', 'i1', 3), ('k', 'u1'), ('t', 'u1'), ('pad', 'u1')])
         r['p'] = np.round(pos / q).clip(-32767, 32767)
-        r['n'] = np.round(np.asarray(nrm) * 127).clip(-127, 127)
+        r['n'] = np.round(nrm * 127).clip(-127, 127)
         r['k'] = kind
         r['t'] = np.round(np.clip(tone, 0, 1) * 255)
         return r
 
     pts = [
-        rec(P(p_face), n_face, face_kind, face_tone),
-        rec(P(p_head), n_head, head_kind, head_tone),
-        rec(P(c_pts), c_nrm, K_CONTOUR, c_tone),
-        rec(P(a_face[node_face]), fn0[node_face], K_NODE, 0.55),
-        rec(P(gp[hn]), gn[hn], K_NODE, 0.35),
-        rec(P(a_face[key_ids]), fn0[key_ids], K_KEY, 1.0),
-        rec(P([b for b, _, _ in leaders]), [o for _, o, _ in leaders], K_TIP, [l for _, _, l in leaders]),
-        rec(P(i_pts), i_nrm, K_IRIS, 0.9),
+        rec(p_face, n_face, face_kind, face_tone),
+        rec(p_head, n_head, head_kind, head_tone),
+        rec(c_pts, c_nrm, K_CONTOUR, c_tone),
+        rec(a_face[node_face], fn0[node_face], K_NODE, 0.55),
+        rec(gp[hn], gn[hn], K_NODE, 0.35),
+        rec(a_face[key_ids], fn0[key_ids], K_KEY, 1.0),
+        # the leader tips store their direction, not a normal
+        rec([b for b, _, _ in leaders], [o for _, o, _ in leaders], K_TIP, [l for _, _, l in leaders], warp_normals=False),
+        rec(i_pts, i_nrm, K_IRIS, 0.9),
+        rec(hv, hn_, K_HAIR, hair_dot_tone),
     ]
     pts = np.concatenate(pts)
 
     def line_rec(a, b, na, nb, kind, pa, pb):
         r = np.zeros(2 * len(a), dtype=[('p', '<i2', 3), ('n', 'i1', 3), ('k', 'u1'), ('t', 'u1'), ('pad', 'u1')])
         r['p'][0::2] = np.round(P(a) / q); r['p'][1::2] = np.round(P(b) / q)
+        if kind != L_LEADER:
+            na, nb = warp_n(na, a), warp_n(nb, b)
         r['n'][0::2] = np.round(na * 127); r['n'][1::2] = np.round(nb * 127)
         r['k'] = kind
         r['t'][0::2] = pa; r['t'][1::2] = pb
@@ -673,6 +926,10 @@ def main():
     lines = np.concatenate([
         line_rec(a_face[face_edges[:, 0]], a_face[face_edges[:, 1]], fn0[face_edges[:, 0]], fn0[face_edges[:, 1]], L_FACE, 0, 0),
         line_rec(gp[head_edges[:, 0]], gp[head_edges[:, 1]], gn[head_edges[:, 0]], gn[head_edges[:, 1]], L_HEAD, 0, 0),
+        # hair: every segment of every strand; t runs 0 at the root to 255 at the tip (for growing in)
+        line_rec(np.concatenate([v[:-1] for v in hair_v]), np.concatenate([v[1:] for v in hair_v]),
+                 np.concatenate([n[:-1] for n in hair_n]), np.concatenate([n[1:] for n in hair_n]), L_HAIR,
+                 np.round(np.concatenate([t[:-1] for t in hair_t]) * 255), np.round(np.concatenate([t[1:] for t in hair_t]) * 255)),
         # leader lines: both ends at the base; the tip is base + direction * length * growth
         line_rec(np.array([b for b, _, _ in leaders]), np.array([b for b, _, _ in leaders]),
                  np.array([o for _, o, _ in leaders]), np.array([o for _, o, _ in leaders]), L_LEADER,
@@ -692,7 +949,7 @@ def main():
     o_lines = pts.nbytes
     o_tv = o_lines + lines.nbytes
     o_ti = o_tv + tv.nbytes
-    allp = P(np.concatenate([p_face, p_head]))
+    allp = P(np.concatenate([p_face, p_head] + hair_v))
     meta = dict(
         posScale=q,
         points=dict(offset=0, count=int(len(pts)), stride=12),
@@ -700,9 +957,9 @@ def main():
         tris=dict(offset=int(o_tv), vertices=int(len(tv)), stride=8, indexOffset=int(o_ti), indices=int(len(tri_i))),
         iris=dict(radius=float(rad * scale)),
         kinds=dict(skin=K_SKIN, hair=K_HAIR, neck=K_NECK, iris=K_IRIS, contour=K_CONTOUR, node=K_NODE, key=K_KEY, tip=K_TIP),
-        frame=dict(x=float(np.abs(allp[allp[:, 1] > P(a_face[152])[1], 0]).max().round(3)),
+        frame=dict(x=float(np.abs(allp[allp[:, 1] > P(a_face[152])[0, 1], 0]).max().round(3)),
                    top=float(allp[:, 1].max().round(3)),
-                   chin=float(round(P(a_face[152])[1], 3))),
+                   chin=float(round(P(a_face[152])[0, 1], 3))),
     )
     with open(os.path.join(args.out, 'face.json'), 'w') as fh:
         json.dump(meta, fh, indent=1)

@@ -7,7 +7,7 @@
                    swirl in to their place on the face (ease-out: a fast start
                    and a long run-out, like the rest of the site)
      3.3 - 4.8 s   a scan line runs down the head and leaves the wireframe
-                   behind it
+                   behind it; the hair grows out from the parting
      4.6 - 5.5 s   the tracking points light up and their leader lines grow
    After that the head turns towards the cursor with a soft spring, the eyes
    lead the head, the nodes twinkle and the scan line returns now and then.
@@ -167,23 +167,32 @@ ${COMMON}
 uniform float uRevealY;
 uniform float uScan;
 uniform float uLeader;
+uniform float uHair;
+uniform float uTime;
 out vec4 vColor;
 void main() {
   int kind = int(aKT.x + 0.5);
+  float par = aKT.y / 255.0;
   vec3 target = aPos * uPosScale;
   vec3 n = aNrm;
-  if (kind == 2) { target += aNrm * (aKT.y / 255.0) * uLeader; n = vec3(0.0, 0.0, 1.0); }
+  if (kind == 2) { target += aNrm * par * uLeader; n = vec3(0.0, 0.0, 1.0); }
+  // hair: the tips sway a little
+  if (kind == 3) target.x += sin(uTime * 0.8 + target.y * 2.5) * 0.006 * par * par;
   vec3 p = place(target);
   n = uRot * n;
   gl_Position = project(p);
 
   float vis = smoothstep(-0.1, 0.3, facingCam(p, n));
   vis *= smoothstep(-1.8, -1.2, target.y);
-  float base = kind == 0 ? 0.3 : (kind == 1 ? 0.17 : 0.7);
-  float shown = kind == 2 ? step(0.001, uLeader) : smoothstep(uRevealY, uRevealY + 0.07, target.y);
+  float base = kind == 0 ? 0.3 : (kind == 1 ? 0.17 : (kind == 2 ? 0.7 : 0.3));
+  float shown;
+  if (kind == 2) shown = step(0.001, uLeader);
+  else if (kind == 3) shown = smoothstep(par - 0.05, par, uHair);   // strands grow from the root
+  else shown = smoothstep(uRevealY, uRevealY + 0.07, target.y);
   float band = uScan > -9.0 ? exp(-pow((target.y - uScan) / 0.05, 2.0)) : 0.0;
   float alpha = min(1.0, base + band * 0.5) * vis * shown;
-  vColor = vec4(mix(vec3(0.114, 0.435, 0.878), vec3(0.03, 0.2, 0.56), kind == 2 ? 0.4 : 0.0), alpha);
+  float deepMix = kind == 2 ? 0.4 : (kind == 3 ? 0.5 : 0.0);
+  vColor = vec4(mix(vec3(0.114, 0.435, 0.878), vec3(0.03, 0.2, 0.56), deepMix), alpha);
 }`;
 
 const LINE_FRAG = `#version 300 es
@@ -257,7 +266,7 @@ export async function createFace(canvas, { reduced = false } = {}) {
 
   const shared = ['uPosScale', 'uProj', 'uRot', 'uPivot', 'uDist', 'uShift', 'uScale'];
   const P = program(gl, POINT_VERT, POINT_FRAG, [...shared, 'uTanHalf', 'uAspect', 'uTime', 'uViewH', 'uGaze', 'uScan', 'uFlight', 'uKeys', 'uLeader']);
-  const Ln = program(gl, LINE_VERT, LINE_FRAG, [...shared, 'uRevealY', 'uScan', 'uLeader']);
+  const Ln = program(gl, LINE_VERT, LINE_FRAG, [...shared, 'uRevealY', 'uScan', 'uLeader', 'uHair', 'uTime']);
   const D = program(gl, DEPTH_VERT, DEPTH_FRAG, shared);
   const all = [P, Ln, D];
 
@@ -386,6 +395,7 @@ export async function createFace(canvas, { reduced = false } = {}) {
       if (ph < 1.5) scan = sweep(ph / 1.5);
       revealY = te - s0 < 1.5 ? sweep((te - s0) / 1.5) : -10;
     }
+    const hair = reduced ? 1 : ease((te - (ASSEMBLED_AT - 0.3)) / 1.6);
     const keys = reduced ? 1 : ease((te - (ASSEMBLED_AT + 0.85)) / 0.45);
     const leader = reduced ? 1 : ease((te - (ASSEMBLED_AT + 1.05)) / 0.7);
     const depthOn = te > ASSEMBLED_AT - 0.35;
@@ -418,6 +428,8 @@ export async function createFace(canvas, { reduced = false } = {}) {
     gl.uniform1f(Ln.u.uRevealY, revealY);
     gl.uniform1f(Ln.u.uScan, scan);
     gl.uniform1f(Ln.u.uLeader, leader);
+    gl.uniform1f(Ln.u.uHair, hair);
+    gl.uniform1f(Ln.u.uTime, te);
     gl.bindVertexArray(lineVao);
     gl.drawArrays(gl.LINES, 0, meta.lines.count);
 

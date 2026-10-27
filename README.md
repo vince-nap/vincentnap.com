@@ -33,8 +33,8 @@ python3 -m http.server 8000 -d site     # then open http://localhost:8000
 
 All text lives in `site/index.html`, one `<section>` per tab. A CV entry is one `<li class="cv-item">`;
 a project is one `<article class="project">`; a history step is one `<li class="knoop">`. Copy an
-existing one and change the text. The CV tab has a "Print / save as PDF" button with its own
-print layout.
+existing one and change the text. The CV tab's "Download CV (PDF)" button serves the original CV,
+`site/assets/cv/CV_Vincent_Nap.pdf`: replace that file to update it.
 
 Short links work once deployed: `vincentnap.com/cv`, `/projects`, `/history`, `/contact`
 (also `vincentnap.com/#cv` and so on).
