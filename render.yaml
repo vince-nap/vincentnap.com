@@ -26,10 +26,19 @@ services:
       - type: redirect
         source: /skills
         destination: /#skills
+    # security headers. NB: Render applies these only to a service created from this
+    # Blueprint; for a service created by hand, add them under Settings -> Headers.
+    # The CSP is also in index.html, so it holds either way.
     headers:
       - path: /*
         name: Content-Security-Policy
         value: "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.web3forms.com; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none'"
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000; includeSubDomains
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
       - path: /*
         name: X-Content-Type-Options
         value: nosniff
@@ -38,7 +47,16 @@ services:
         value: strict-origin-when-cross-origin
       - path: /*
         name: Permissions-Policy
-        value: camera=(), microphone=(), geolocation=()
+        value: accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), browsing-topics=()
+      - path: /*
+        name: Cross-Origin-Opener-Policy
+        value: same-origin
+      - path: /*
+        name: Cross-Origin-Resource-Policy
+        value: same-origin
+      - path: /assets/cv/*
+        name: X-Robots-Tag
+        value: noindex, noarchive
       - path: /assets/fonts/*
         name: Cache-Control
         value: public, max-age=2592000, immutable

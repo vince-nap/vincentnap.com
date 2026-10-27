@@ -2,6 +2,10 @@
 <html lang="en" class="no-js">
 <head>
 <meta charset="utf-8">
+<!-- The same policy as the headers in render.yaml, in the page itself, so it holds even where
+     the host does not send those headers. (Framing is refused in app.js; a meta tag cannot.) -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.web3forms.com; base-uri 'self'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vincent Nap</title>
 <meta name="description" content="Vincent Nap — LL.M. Law &amp; Finance at the University of Amsterdam, intern at Bencis Capital Partners. Curriculum vitae, projects and contact.">
@@ -16,8 +20,8 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="preload" href="/assets/fonts/barlow-300.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/barlow-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/assets/css/site.css?v=6ec131de18">
-<script type="module" src="/assets/js/app.js?v=17e070b9e4"></script>
+<link rel="stylesheet" href="/assets/css/site.css?v=fca8cebe3f">
+<script type="module" src="/assets/js/app.js?v=2df1b4ce4c"></script>
 </head>
 <body class="intro">
 

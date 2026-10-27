@@ -1,2 +1,4 @@
 User-agent: *
 Allow: /
+# the CV as a PDF carries a home address and a phone number: keep it out of search results
+Disallow: /assets/cv/

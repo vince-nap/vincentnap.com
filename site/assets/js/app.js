@@ -24,6 +24,9 @@ import { createFace, ASSEMBLED_AT, FINISHED_AT } from './face.js?v=afc95fd133';
 
 const root = document.documentElement;
 root.classList.remove('no-js');
+// never inside another site's frame (clickjacking): the page stays blank there.
+// The frame-ancestors header in render.yaml does the same where the host sends it.
+if (window.top !== window.self) root.classList.add('ingelijst');
 const body = document.body;
 const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const narrow = window.matchMedia('(max-width: 820px)');
@@ -136,7 +139,11 @@ function show(id) {
   requestAnimationFrame(() => layoutFace(changed));
 }
 
-function fromHash() { show(decodeURIComponent(location.hash.slice(1))); }
+function fromHash() {
+  let id = '';
+  try { id = decodeURIComponent(location.hash.slice(1)); } catch { /* a malformed link: the home screen */ }
+  show(id);
+}
 
 function close() {
   if (location.hash) history.pushState(null, '', location.pathname + location.search);

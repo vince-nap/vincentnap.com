@@ -1,0 +1,5 @@
+# Found a security problem on vincentnap.com? Please write.
+Contact: mailto:vinchdh@gmail.com
+Expires: 2027-10-27T00:00:00.000Z
+Preferred-Languages: en, nl
+Canonical: https://vincentnap.com/.well-known/security.txt

@@ -522,6 +522,9 @@ html.scheren #readout > div { opacity: 0; transition-delay: 0s; }
 }
 body.fase-menu #voet { opacity: 1; }
 
+/* framed by another site: nothing to see or click (app.js) */
+html.ingelijst body { visibility: hidden; }
+
 /* ---------- without JS or without WebGL ---------- */
 html.no-js #klok, html.no-js #menu li, html.no-js .merk, html.no-js #voet { opacity: 1; transform: none; }
 html.no-js body { overflow: auto; }

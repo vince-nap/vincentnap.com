@@ -69,6 +69,42 @@ ends it; a reload brings the hair back. The code is in `site/assets/js/app.js` (
 Until a key is set, the form opens the visitor's own mail program with the question filled in.
 The Content-Security-Policy in `render.yaml` allows `https://api.web3forms.com` for this.
 
+## Security
+
+The site is static: no login, no database, no server code, nothing a visitor can change. It can
+only be changed by pushing to `main` on GitHub (Render deploys that), or by taking over the
+domain at Versio. So securing it means securing those three accounts.
+
+```
+GitHub (repo, main) ──auto-deploy──► Render ──► vincentnap.com ◄── DNS at Versio
+```
+
+In the site itself:
+
+- **Content-Security-Policy**: only the site's own scripts, styles, fonts and images; the form
+  may only talk to `api.web3forms.com`. In the headers (render.yaml) and in `index.html` itself.
+- **No framing** (clickjacking): `frame-ancestors 'none'` and `X-Frame-Options` in the headers;
+  `app.js` also blanks the page if it finds itself in a frame, for when the headers are missing.
+- **HSTS, nosniff, Referrer-Policy, Permissions-Policy, COOP, CORP** in the headers.
+- No `innerHTML`, `eval` or inline scripts; no third-party scripts, fonts or trackers; every
+  external link has `rel="noopener"`.
+- `robots.txt` keeps the CV PDF (home address, phone number) out of search results.
+- `/.well-known/security.txt` says where to report a problem (renew `Expires` yearly).
+
+**The headers only apply if Render sends them.** render.yaml is read only by a service created
+as a Blueprint; this service was created by hand. Either add each header from render.yaml under
+**Render → the service → Settings → Headers** (path `/*`), or check what is sent at
+securityheaders.com.
+
+Accounts (once):
+
+| Where | What |
+|---|---|
+| GitHub | Two-factor authentication on. Repo **private** (Settings → General → Danger Zone). Default branch `main`. Ruleset on `main`: block force pushes and deletion. Under Settings → Applications, Render and Claude limited to this repo. |
+| Render | Two-factor authentication on. No other team members. Pull Request Previews off. |
+| Versio | Two-factor authentication on. Transfer lock (registrar lock) on. DNSSEC on. |
+| DNS | The domain sends no mail, so nobody may send it in its name: TXT `@` `v=spf1 -all`; TXT `_dmarc` `v=DMARC1; p=reject; adkim=s; aspf=s`. Optional CAA: `0 issue "letsencrypt.org"` and `0 issue "pki.goog"` (both, or Render cannot renew the certificate). |
+
 ## Going live: GitHub → Render → Versio
 
 ### 1. Make the repository private
