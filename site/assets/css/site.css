@@ -222,7 +222,9 @@ body.fase-menu #menu li:nth-child(5) { transition-delay: .44s; }
 .tab-kort { display: none; }
 
 /* ---------- panel ---------- */
-/* The panel runs from the menu to the right margin; the face waits behind its glass. */
+/* The panel runs from the menu towards the right margin. On screens wide enough it
+   stops short of it, leaving a column where the head gathers again beside it; on
+   smaller ones the head waits behind its glass. */
 #paneel {
   position: fixed; z-index: 3;
   left: calc(var(--rand) + var(--menu-b) + 40px); right: var(--rand); top: calc(var(--rand) + 96px); bottom: 52px;
@@ -242,6 +244,9 @@ body.fase-menu #menu li:nth-child(5) { transition-delay: .44s; }
   opacity: 0; visibility: hidden; transform: translateX(-18px);
   transition: opacity .35s, transform .7s var(--uit), visibility 0s .7s;
   outline: none;
+}
+@media (min-width: 1200px) {
+  #paneel { right: calc(var(--rand) + clamp(300px, 24vw, 480px)); }
 }
 /* the panel waits a moment, so the head is seen blowing apart before the glass covers it */
 body.open #paneel { opacity: 1; visibility: visible; transform: none; transition: opacity .35s .18s, transform .7s var(--uit) .18s, visibility 0s; }
@@ -401,15 +406,28 @@ a.kanaal-waarde:hover { color: var(--accent); }
 
 /* ---------- skills: cards like the projects; opened, a card takes the full width
    and its sources run down a trace like the brief history ---------- */
-.vaardigheden { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 18px; margin-top: 26px; align-items: start; }
+/* Two to a row, the cards of a row equally tall with the trace link on one line; a card
+   left alone on its row (the seventh, or one just before an opened card) is centred
+   (li.alleen, set in app.js). One to a row in a narrow panel. */
+#skills { container-type: inline-size; }
+.vaardigheden { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; margin-top: 26px; }
+@container (min-width: 760px) {
+  .vaardigheden { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .vaardigheden > li { grid-column: span 2; }
+  .vaardigheden > li.alleen { grid-column: 2 / span 2; }
+}
 .project.vaardigheid { padding: 0; }
 .vaardigheid summary { display: block; padding: 22px 22px 20px; cursor: pointer; list-style: none; }
+.vaardigheid:not([open]) { height: 100%; }
+.vaardigheid:not([open]) summary { height: 100%; display: flex; flex-direction: column; align-items: flex-start; }
+.vaardigheid:not([open]) .spoor-knop { margin-top: auto; }
+.vaardigheid .tags { margin-bottom: 18px; }
 .vaardigheid summary::-webkit-details-marker { display: none; }
 .vaardigheid summary:focus-visible { outline: 1px solid var(--accent); outline-offset: -4px; }
 .vaardigheid h3 { padding-right: 56px; }
 .vaardigheid .project-meta { margin: 8px 0 0; }
 .spoor-knop {
-  display: inline-flex; align-items: center; gap: 10px; margin-top: 16px;
+  display: inline-flex; align-items: center; gap: 10px;
   font: 500 10.5px/1.2 var(--f-kop); letter-spacing: .2em; text-transform: uppercase; color: var(--accent);
 }
 .spoor-knop .ruit { width: 9px; height: 9px; transform: rotate(45deg); border: 1.5px solid var(--accent); background: var(--bg); transition: background .3s, box-shadow .3s; }
@@ -419,6 +437,7 @@ a.kanaal-waarde:hover { color: var(--accent); }
 .vaardigheid[open] .spoor-open { display: inline; }
 .vaardigheid[open] .spoor-knop .ruit { background: var(--accent); box-shadow: 0 0 10px -2px var(--accent-glow); }
 .vaardigheden > li:has(> .vaardigheid[open]) { grid-column: 1 / -1; }
+.vaardigheid:not([open]) h3 { font-size: 16px; letter-spacing: .18em; line-height: 1.3; }
 .vaardigheid[open] { border-color: var(--line-strong); background: linear-gradient(135deg, rgba(29, 111, 224, .06), rgba(255, 255, 255, .85) 55%); }
 .vaardigheid[open]::before, .vaardigheid[open]::after { width: 22px; height: 22px; opacity: 1; }
 .vaardigheid[open] h3 { font-size: 22px; }

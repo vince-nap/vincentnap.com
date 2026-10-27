@@ -100,10 +100,11 @@ function layoutFace(burst = false) {
   if (narrow.matches) { face.layout(0, 0.35, 0.55, opts); return; }
   // the panel takes the stage; the face steps right and waits behind its glass,
   // or, on screens wide enough to leave room next to the panel, beside it
-  const rect = panel.getBoundingClientRect();
-  const free = window.innerWidth - rect.right;
+  // (offsetLeft/Width: the panel's place without the slide it opens with)
+  const right = panel.offsetLeft + panel.offsetWidth;
+  const free = window.innerWidth - right;
   if (free > 320) {
-    const nx = ((rect.right + free / 2) / window.innerWidth) * 2 - 1;
+    const nx = ((right + free / 2) / window.innerWidth) * 2 - 1;
     face.layout(nx, -0.04, Math.max(0.42, Math.min(0.62, free / window.innerWidth * 2.1)), opts);
   } else {
     face.layout(0.55, -0.04, 0.62, opts);
@@ -147,8 +148,33 @@ tabs.forEach((a) => a.addEventListener('click', (e) => {
   // clicking the open tab again closes it
   if (a.getAttribute('aria-current') === 'page') { e.preventDefault(); close(); }
 }));
+// a click outside the panel and the menu closes it (only a click that also started
+// outside, so selecting text in the panel and letting go outside does not)
+let downOutside = false;
+const outside = (el) => !el.closest('#paneel, #menu');
+document.addEventListener('pointerdown', (e) => { downOutside = outside(e.target); });
+document.addEventListener('click', (e) => {
+  if (body.classList.contains('open') && downOutside && outside(e.target)) close();
+  downOutside = false;
+});
 narrow.addEventListener('change', () => layoutFace());
 window.addEventListener('resize', () => layoutFace());
+
+/* ---------- skills: a card left alone on its row is centred (see site.css) ---------- */
+function wireSkills() {
+  const items = [...document.querySelectorAll('.vaardigheden > li')];
+  const arrange = () => {
+    let run = [];
+    const flush = () => { if (run.length % 2) run[run.length - 1].classList.add('alleen'); run = []; };
+    for (const li of items) {
+      li.classList.remove('alleen');
+      if (li.firstElementChild.open) flush(); else run.push(li);
+    }
+    flush();
+  };
+  items.forEach((li) => li.firstElementChild.addEventListener('toggle', arrange));
+  arrange();
+}
 
 /* ---------- contact ---------- */
 function wireContact() {
@@ -242,6 +268,7 @@ function followFace() {
 async function main() {
   startClock();
   wireContact();
+  wireSkills();
   const initial = location.hash.slice(1);
 
   try {
