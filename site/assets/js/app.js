@@ -7,7 +7,6 @@
      0.6   the clock comes up, top right
      3.3   the brackets lock onto the face; a scan line runs down it
      4.0   name and tabs slide in from the left
-     4.6   tracking points light up, leader lines grow
      5.2   the readout types in next to the face
    A click or key press during the opening skips to the end. With reduced
    motion everything is simply there.
@@ -15,7 +14,7 @@
    Tabs are hash links (#cv, #projects, #history, #contact), so a link on a
    CV or LinkedIn can open one directly.
    ========================================================================== */
-import { createFace, ASSEMBLED_AT, FINISHED_AT } from './face.js?v=cbfdbfa6ad';
+import { createFace, ASSEMBLED_AT, FINISHED_AT } from './face.js?v=bb3f72187b';
 
 const root = document.documentElement;
 root.classList.remove('no-js');

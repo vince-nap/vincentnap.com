@@ -8,7 +8,6 @@
                    and a long run-out, like the rest of the site)
      3.3 - 4.8 s   a scan line runs down the head, lighting up the dots
                    it passes
-     4.6 - 5.5 s   the tracking points light up and their leader lines grow
    After that the head turns towards the cursor with a soft spring, the eyes
    lead the head and the scan line returns now and then.
 
@@ -17,9 +16,9 @@
    camera), and the dots are tested against them. Without that the back of the
    head would show through the face.
 
-   The line programs below still draw what face.bin holds as lines: today only
-   the eight leader lines (the generic build has no wireframe and no hair
-   strands, but the photo build and --procedural-hair still write them).
+   The line programs and the tracking-point kinds below draw nothing for the
+   generic build (no wireframe, no hair strands, no tracking points or leader
+   lines); the photo build and --procedural-hair still write them.
    ========================================================================== */
 
 const COMMON = `
@@ -120,7 +119,7 @@ void main() {
   } else if (kind == 3) {                // irises
     size = 0.0085; alpha = 0.9; col = deep;
   } else if (kind == 4) {                // feature clusters
-    size = 0.0068 * (0.85 + 0.4 * tone); alpha = 0.55 + 0.4 * tone; col = mix(accent, deep, 0.55);
+    size = 0.0052 * (0.85 + 0.4 * tone); alpha = 0.45 + 0.4 * tone; col = mix(accent, deep, 0.55);
   } else if (kind == 5) {                // wireframe nodes, twinkling
     size = 0.005 + 0.009 * tone; alpha = (0.35 + 0.45 * tone) * (0.7 + 0.3 * sin(uTime * 1.7 + r1 * 6.2832));
     col = accent;
@@ -225,7 +224,7 @@ void main() { outColor = vec4(0.0); }`;
 
 const FOV = 28 * Math.PI / 180;
 export const ASSEMBLED_AT = 3.75;              // the last dot has landed
-export const FINISHED_AT = ASSEMBLED_AT + 1.8; // scan done, tracking points are in
+export const FINISHED_AT = ASSEMBLED_AT + 1.8; // the scan is done
 
 function compile(gl, type, src) {
   const s = gl.createShader(type);
@@ -338,7 +337,7 @@ export async function createFace(canvas, { reduced = false } = {}) {
     const tan = Math.tan(FOV / 2);
     const height = (frame.top - frame.chin) * 1.32;
     const fitH = height / 2 / (0.74 * tan);
-    const fitW = (frame.x * 1.5) / (0.86 * tan * aspect);   // room for the leader lines
+    const fitW = (frame.x * 1.5) / (0.86 * tan * aspect);   // room around the head
     state.dist = Math.max(fitH, fitW) + 0.4;
     const proj = perspective(FOV, aspect, 0.1, 60);
     for (const { p, u } of all) {

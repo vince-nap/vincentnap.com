@@ -30,11 +30,11 @@ import trimesh
 from mediapipe.tasks.python.vision import FaceLandmarksConnections as FLC
 
 from build_face import (HERE, ROOT, K_SKIN, K_NECK, K_IRIS, K_CONTOUR, K_NODE, K_KEY, K_TIP, K_HAIR,
-                        L_LEADER, L_HAIR, load_obj, poisson_disk, sample_mesh)
+                        L_HAIR, load_obj, poisson_disk, sample_mesh)
 
 # the solids, in the canonical model's centimetres (x right, y up, z towards the viewer)
 CRANIUM = dict(c=(0.0, 3.0, -4.25), r=(7.9, 10.6, 9.75), n=2.2)
-JAW = dict(c=(0.0, -4.6, -3.0), r=(6.8, 5.4, 6.4), n=2.0)
+JAW = dict(c=(0.0, -4.6, -3.0), r=(7.4, 5.2, 6.4), n=2.6)           # boxy: a square jaw
 EARS = [dict(c=(s * 7.75, 0.3, -3.7), r=(0.95, 3.0, 1.9), n=2.0) for s in (-1, 1)]
 NECK = dict(cx=0.0, cz=-3.6, rx=5.3, rz=5.7, y0=-19.0, y1=0.0)
 
@@ -74,6 +74,58 @@ def exit_neck(o, d):
     t = np.where((a > 1e-9) & (disc > 0), (-b + np.sqrt(np.maximum(disc, 0))) / (2 * np.maximum(a, 1e-9)), 0.0)
     y = o[:, 1] + d[:, 1] * t
     return np.where((t > 0) & (y > NECK['y0']) & (y < NECK['y1']), t, 0.0)
+
+
+def masculine(v, fn):
+    """Reshapes MediaPipe's average face into a more masculine one: a square jaw with a
+    marked angle and a broader, flatter chin, cheekbones that stand out with hollows
+    under them, a slight bump on the bridge of the nose and thinner lips.
+
+    Landmarks are given a displacement in cm (the left side; the right is mirrored)
+    and landmarks that must stay put are anchored; a Gaussian radial basis function
+    through all of them moves the rest of the mesh smoothly. The lips are then
+    pressed together towards the line of the mouth."""
+    mirror = lambda i: int(np.argmin(((v - v[i] * [-1, 1, 1]) ** 2).sum(1)))
+    ctrl = {}
+
+    def move(i, d):
+        ctrl[i] = np.array(d, float)
+        if abs(v[i, 0]) > 0.05:
+            ctrl[mirror(i)] = np.array(d, float) * [-1, 1, 1]
+
+    # the jaw: the angle out and down, the bottom of the face flattened into a broad chin
+    for i, d in [(132, (0.15, 0, 0)), (58, (0.5, -0.2, 0)), (172, (1.0, -0.5, 0)), (136, (0.95, -0.7, 0.05)),
+                 (150, (0.9, -0.8, 0.1)), (149, (0.7, -0.65, 0.15)), (176, (0.45, -0.42, 0.2)),
+                 (148, (0.25, -0.2, 0.22)), (152, (0, -0.14, 0.22))]:
+        move(i, d)
+    # cheekbones out and forward, the cheeks under them pulled in
+    for i, d in [(116, (0.3, 0.05, 0.3)), (123, (0.35, 0.0, 0.3)), (117, (0.15, 0.05, 0.25))]:
+        move(i, d)
+    for i, depth in [(187, 0.45), (207, 0.3), (192, 0.35), (213, 0.3), (147, 0.2), (214, 0.15)]:
+        move(i, -depth * fn[i])
+    # a bump on the bridge of the nose, a third of the way down, and a small dip after it
+    for i, dz in [(6, 0.04), (197, 0.2), (195, 0.25), (5, -0.03)]:
+        move(i, (0, 0, dz))
+    # anchors: the eyes, brows, forehead, the tip and base of the nose, the mouth, the face's edge at the ears
+    for i in [33, 133, 159, 145, 70, 105, 107, 10, 151, 109, 168, 4, 1, 2, 98, 61, 0, 17, 13, 14,
+              37, 84, 234, 127, 93, 50, 101, 206]:
+        if i not in ctrl:
+            move(i, (0, 0, 0))
+
+    ids = np.array(list(ctrl))
+    disp = np.array([ctrl[i] for i in ids])
+    sigma = 1.3
+    k = lambda a, b: np.exp(-((a[:, None] - b[None]) ** 2).sum(-1) / (2 * sigma ** 2))
+    w = np.linalg.solve(k(v[ids], v[ids]) + 1e-4 * np.eye(len(ids)), disp)
+    out = v + k(v, v[ids]) @ w
+
+    # thinner lips: everything near the mouth pressed towards the line between the lips
+    y_m = -4.27
+    smooth = lambda e0, e1, x: (lambda t: t * t * (3 - 2 * t))(np.clip((x - e0) / (e1 - e0), 0, 1))
+    wl = (1 - smooth(2.5, 3.1, np.abs(v[:, 0]))) * (1 - smooth(1.0, 2.0, np.abs(v[:, 1] - y_m)))
+    out[:, 1] = y_m + (out[:, 1] - y_m) * (1 - 0.35 * wl)
+    out[:, 2] -= 0.18 * wl
+    return out
 
 
 def sculpted_hair(path, rng):
@@ -221,6 +273,10 @@ def main():
     args = ap.parse_args()
 
     face_v, face_f = load_obj(os.path.join(args.models, 'canonical_face_model.obj'))
+    fn = trimesh.Trimesh(face_v, face_f, process=False).vertex_normals.copy()
+    if fn[:, 2].mean() < 0:
+        fn = -fn
+    face_v = masculine(face_v, fn)
     fm = trimesh.Trimesh(face_v, face_f, process=False)
     fn = fm.vertex_normals.copy()
     if fn[:, 2].mean() < 0:
@@ -323,6 +379,22 @@ def main():
     far = cKDTree(p_face).query(p_head)[0] > 0.15
     p_head, n_head = p_head[far], n_head[far]
     face_tone = 0.18 + rng.uniform(0, 0.1, len(p_face))
+    # shading drawn in, as in a stipple drawing: a shadow running down under each
+    # cheekbone towards the corner of the mouth, light on the cheekbones, and a
+    # darker edge along the jaw
+    g = lambda p, c, sg: np.exp(-(((p - np.array(c)) / sg) ** 2).sum(1) / 2)
+
+    def band(p, a, b, width):
+        a, b = np.array(a), np.array(b)
+        t = np.clip(((p - a) @ (b - a)) / ((b - a) @ (b - a)), 0, 1)
+        d = np.linalg.norm(p - (a + t[:, None] * (b - a)), axis=1)
+        return np.exp(-(d / width) ** 2 / 2) * np.sin(np.pi * t) ** 0.6
+
+    for sx in (1, -1):
+        m = np.array([sx, 1, 1])
+        face_tone += 0.3 * band(p_face, (6.6 * sx, -1.2, 1.4), (3.7 * sx, -3.9, 4.1), 0.6)
+        face_tone -= 0.08 * g(p_face, face_v[123] * m, 0.9)
+        face_tone += 0.1 * band(p_face, face_v[58] * m, face_v[149] * m, 0.45)
     head_kind = np.where(p_head[:, 1] < face_v[152, 1] - 0.6, K_NECK, K_SKIN)
     head_tone = 0.16 + rng.uniform(0, 0.08, len(p_head))
 
@@ -490,19 +562,19 @@ def main():
 
     tip_y = face_v[4, 1] - 0.2
     groups = [
-        (FLC.FACE_LANDMARKS_LEFT_EYE, 0.05, 1.0, 0.02, None), (FLC.FACE_LANDMARKS_RIGHT_EYE, 0.05, 1.0, 0.02, None),
-        (FLC.FACE_LANDMARKS_LEFT_EYEBROW, 0.08, 0.8, 0.06, None), (FLC.FACE_LANDMARKS_RIGHT_EYEBROW, 0.08, 0.8, 0.06, None),
-        (FLC.FACE_LANDMARKS_LIPS, 0.055, 0.95, 0.025, None),
-        (FLC.FACE_LANDMARKS_NOSE, 0.075, 0.7, 0.035, lambda a, b: (a[1] < tip_y or b[1] < tip_y) and not (abs(a[0]) < 0.01 and abs(b[0]) < 0.01)),
-        (FLC.FACE_LANDMARKS_NOSE, 0.1, 0.45, 0.02, lambda a, b: abs(a[0]) < 0.01 and abs(b[0]) < 0.01),
-        (FLC.FACE_LANDMARKS_FACE_OVAL, 0.085, 0.6, 0.06, lambda a, b: a[1] < face_v[132, 1] + 0.5 and b[1] < face_v[132, 1] + 0.5),
+        (FLC.FACE_LANDMARKS_LEFT_EYE, 0.07, 0.85, 0.01, None), (FLC.FACE_LANDMARKS_RIGHT_EYE, 0.07, 0.85, 0.01, None),
+        (FLC.FACE_LANDMARKS_LEFT_EYEBROW, 0.09, 0.6, 0.04, None), (FLC.FACE_LANDMARKS_RIGHT_EYEBROW, 0.09, 0.6, 0.04, None),
+        (FLC.FACE_LANDMARKS_LIPS, 0.08, 0.7, 0.01, None),
+        (FLC.FACE_LANDMARKS_NOSE, 0.09, 0.6, 0.015, lambda a, b: (a[1] < tip_y or b[1] < tip_y) and not (abs(a[0]) < 0.01 and abs(b[0]) < 0.01)),
+        (FLC.FACE_LANDMARKS_NOSE, 0.12, 0.4, 0.015, lambda a, b: abs(a[0]) < 0.01 and abs(b[0]) < 0.01),
+        (FLC.FACE_LANDMARKS_FACE_OVAL, 0.1, 0.72, 0.02, lambda a, b: a[1] < face_v[132, 1] + 0.5 and b[1] < face_v[132, 1] + 0.5),
     ]
     c_pts, c_nrm, c_tone = [], [], []
     for k, (conns, sp, tn, jit, kf) in enumerate(groups):
         p, n, t = contour(conns, sp, tn, jit, 20 + k, kf)
         c_pts += p; c_nrm += n; c_tone += t
     c_pts, c_nrm, c_tone = np.concatenate(c_pts), np.concatenate(c_nrm), np.concatenate(c_tone)
-    k = poisson_disk(c_pts, 0.04, 5)
+    k = poisson_disk(c_pts, 0.055, 5)
     c_pts, c_nrm, c_tone = c_pts[k], c_nrm[k], c_tone[k]
 
     # irises: a ring and a pupil in the middle of each eye opening; they follow the gaze
@@ -519,13 +591,6 @@ def main():
     i_nrm = np.tile([0.0, 0.0, 1.0], (len(i_pts), 1))
     eye_y = face_v[list(eye_l | eye_r), 1].mean()
 
-    # 4. tracking points with leader lines
-    key_ids = [33, 263, 123, 352, 172, 397, 234, 454]
-    leaders = []
-    for kid in key_ids:
-        b = face_v[kid]
-        out = np.array([np.sign(b[0]), 0.0, 0.0]) + 0.9 * fn[kid] + np.array([0, 0.15 if b[1] > eye_y - 3 else -0.25, 0])
-        leaders.append((b, out / np.linalg.norm(out), 0.2 + 0.07 * (kid % 5) / 4))
 
     # 5. export -------------------------------------------------------------------
     # model units: the face (forehead to chin) about 1.85 tall, the eyes at y = 0.107
@@ -548,24 +613,11 @@ def main():
         rec(p_face, n_face, K_SKIN, face_tone),
         rec(p_head, n_head, head_kind, head_tone),
         rec(c_pts, c_nrm, K_CONTOUR, c_tone),
-        rec(face_v[key_ids], fn[key_ids], K_KEY, 1.0),
-        rec([b for b, _, _ in leaders], [o for _, o, _ in leaders], K_TIP, [l for _, _, l in leaders]),
         rec(i_pts, i_nrm, K_IRIS, 0.9),
         rec(hair_dot, hair_dot_n, K_HAIR, hair_dot_tone),
     ])
 
-    def line_rec(a, b, na, nb, kind, pa, pb):
-        r = np.zeros(2 * len(a), dtype=dt)
-        r['p'][0::2] = np.round(P(a) / q).clip(-32767, 32767); r['p'][1::2] = np.round(P(b) / q).clip(-32767, 32767)
-        r['n'][0::2] = np.round(na * 127); r['n'][1::2] = np.round(nb * 127)
-        r['k'] = kind
-        r['t'][0::2] = pa; r['t'][1::2] = pb
-        return r
-
-    lb = np.array([b for b, _, _ in leaders]); lo_ = np.array([o for _, o, _ in leaders])
-    lines = np.concatenate([
-        line_rec(lb, lb, lo_, lo_, L_LEADER, 0, np.round(np.array([l for _, _, l in leaders]) * 255)),
-    ])
+    lines = np.zeros(0, dtype=dt)                                    # no line segments any more
     # hair: line strips, each strand's points once; index 0xFFFF starts the next
     # strand (primitive restart). t runs from 0 at the root to 255 at the tip.
     if hair_v:

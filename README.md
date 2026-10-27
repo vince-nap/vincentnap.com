@@ -5,7 +5,7 @@ the light menus of the game — white, navy ink, one android-blue accent, thin l
 brackets, spaced capitals.
 
 On load, dots fly in from in front of the screen and swirl into a generic 3D head with long,
-wavy hair — all of it dots, no lines; a scan line runs down it and tracking points light up. The head follows the cursor, the
+wavy hair — all of it dots, no lines; a scan line runs down it. The head follows the cursor, the
 date and time tick top right, and four tabs open on the left: Curriculum Vitae, Projects,
 Brief History, Contact.
 
